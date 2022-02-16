@@ -17,6 +17,7 @@ import (
 	"github.com/insomniacslk/dhcp/iana"
 	"github.com/insomniacslk/dhcp/rfc1035label"
 	"github.com/tinkerbell/dhcp/data"
+	"go.opentelemetry.io/otel"
 	"golang.org/x/net/nettest"
 	"inet.af/netaddr"
 )
@@ -195,7 +196,7 @@ func TestHandleDiscover(t *testing.T) {
 				UserClass:         tt.fields.UserClass,
 				Backend:           tt.fields.Backend,
 			}
-			got := s.handleDiscover(context.Background(), tt.args.m)
+			got := s.handleDiscover(context.Background(), otel.Tracer("DHCP"), tt.args.m)
 			if diff := cmp.Diff(got, tt.want); diff != "" {
 				t.Fatal(diff)
 			}
@@ -344,7 +345,7 @@ func TestHandleRequest(t *testing.T) {
 				UserClass:         tt.fields.UserClass,
 				Backend:           tt.fields.Backend,
 			}
-			got := s.handleRequest(context.Background(), tt.args.m)
+			got := s.handleRequest(context.Background(), otel.Tracer("DHCP"), tt.args.m)
 			if diff := cmp.Diff(got, tt.want); diff != "" {
 				t.Fatal(diff)
 			}
@@ -355,7 +356,7 @@ func TestHandleRequest(t *testing.T) {
 func TestHandleRelease(t *testing.T) {
 	out := &bytes.Buffer{}
 	s := &Server{Log: stdr.New(log.New(out, "", log.Lshortfile))}
-	expectedLog := `handler.go:86: "level"=0 "msg"="received release, no response required"`
+	expectedLog := `handler.go:135: "level"=0 "msg"="received release, no response required"`
 	s.handleRelease(context.Background(), &dhcpv4.DHCPv4{})
 	if diff := cmp.Diff(out.String(), expectedLog+"\n"); diff != "" {
 		t.Fatal(diff)
@@ -402,7 +403,7 @@ func TestHandleFunc(t *testing.T) {
 				},
 			},
 			out:  &bytes.Buffer{},
-			want: `handler.go:21: "level"=0 "msg"="received unknown message type" "type"="INFORM"` + "\n",
+			want: `handler.go:32: "level"=0 "msg"="received unknown message type" "type"="INFORM"` + "\n",
 		},
 		"success discover message type": {
 			fields: fields{
@@ -419,7 +420,7 @@ func TestHandleFunc(t *testing.T) {
 					),
 				},
 			},
-			want: `handler.go:32: "level"=0 "msg"="received discover packet"` + "\n" + `handler.go:51: "level"=0 "msg"="sending offer packet"` + "\n",
+			want: `handler.go:52: "level"=0 "msg"="received discover packet"` + "\n" + `handler.go:86: "level"=0 "msg"="sending offer packet"` + "\n",
 			out:  &bytes.Buffer{},
 		},
 		"success request message type": {
@@ -437,7 +438,7 @@ func TestHandleFunc(t *testing.T) {
 					),
 				},
 			},
-			want: `handler.go:57: "level"=0 "msg"="received request packet"` + "\n" + `handler.go:76: "level"=0 "msg"="sending ack packet"` + "\n",
+			want: `handler.go:93: "level"=0 "msg"="received request packet"` + "\n" + `handler.go:125: "level"=0 "msg"="sending ack packet"` + "\n",
 			out:  &bytes.Buffer{},
 		},
 		"success release message type": {
@@ -455,7 +456,7 @@ func TestHandleFunc(t *testing.T) {
 					),
 				},
 			},
-			want: `handler.go:86: "level"=0 "msg"="received release, no response required"` + "\n",
+			want: `handler.go:135: "level"=0 "msg"="received release, no response required"` + "\n",
 			out:  &bytes.Buffer{},
 		},
 	}
