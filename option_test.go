@@ -165,6 +165,7 @@ func TestBootfileAndNextServer(t *testing.T) {
 		NetbootEnabled    bool
 		UserClass         UserClass
 		Backend           BackendReader
+		OTELEnabled       bool
 	}
 	type args struct {
 		mac     net.HardwareAddr
@@ -184,9 +185,7 @@ func TestBootfileAndNextServer(t *testing.T) {
 		"success bootfile only": {
 			fields: fields{Log: logr.Discard()},
 			args: args{
-				// mac:     net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
-				uClass: Tinkerbell,
-				// tftp:    netaddr.IPPortFrom(netaddr.IPv4(192, 168, 4, 1), 67),
+				uClass:  Tinkerbell,
 				iscript: &url.URL{Scheme: "http", Host: "localhost:8080", Path: "/auto.ipxe"},
 			},
 			wantBootFile: "http://localhost:8080/auto.ipxe",
@@ -215,6 +214,18 @@ func TestBootfileAndNextServer(t *testing.T) {
 			wantBootFile: "tftp://192.168.6.5:69/01:02:03:04:05:07/unidonly.kpxe",
 			wantNextSrv:  net.ParseIP("192.168.6.5"),
 		},
+		"success userclass iPXE with otel": {
+			fields: fields{Log: logr.Discard(), OTELEnabled: true},
+			args: args{
+				mac:    net.HardwareAddr{0x01, 0x02, 0x03, 0x04, 0x05, 0x07},
+				uClass: IPXE,
+				bin:    "unidonly.kpxe",
+				tftp:   netaddr.IPPortFrom(netaddr.IPv4(192, 168, 6, 5), 69),
+				ipxe:   &url.URL{Scheme: "tftp", Host: "192.168.6.5:69"},
+			},
+			wantBootFile: "tftp://192.168.6.5:69/01:02:03:04:05:07/unidonly.kpxe-00-00000000000000000000000000000000-0000000000000000-00",
+			wantNextSrv:  net.ParseIP("192.168.6.5"),
+		},
 		"success default": {
 			fields: fields{Log: logr.Discard()},
 			args: args{
@@ -240,8 +251,9 @@ func TestBootfileAndNextServer(t *testing.T) {
 				NetbootEnabled:    tt.fields.NetbootEnabled,
 				UserClass:         tt.fields.UserClass,
 				Backend:           tt.fields.Backend,
+				OTELEnabled:       tt.fields.OTELEnabled,
 			}
-			bootfile, nextServer := s.bootfileAndNextServer(tt.args.mac, tt.args.uClass, tt.args.opt60, tt.args.bin, tt.args.tftp, tt.args.ipxe, tt.args.iscript)
+			bootfile, nextServer := s.bootfileAndNextServer(tt.fields.ctx, tt.args.mac, tt.args.uClass, tt.args.opt60, tt.args.bin, tt.args.tftp, tt.args.ipxe, tt.args.iscript)
 			if diff := cmp.Diff(tt.wantBootFile, bootfile); diff != "" {
 				t.Fatal("bootfile", diff)
 			}

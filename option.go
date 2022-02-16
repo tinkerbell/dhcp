@@ -121,7 +121,7 @@ func (s *Server) setNetworkBootOpts(ctx context.Context, m *dhcpv4.DHCPv4, n *da
 			}
 			mac := m.ClientHWAddr
 			uClass := UserClass(string(m.GetOneOption(dhcpv4.OptionUserClassInformation)))
-			d.BootFileName, d.ServerIPAddr = s.bootfileAndNextServer(mac, uClass, opt60, bin, s.IPXEBinServerTFTP, s.IPXEBinServerHTTP, s.IPXEScriptURL)
+			d.BootFileName, d.ServerIPAddr = s.bootfileAndNextServer(ctx, mac, uClass, opt60, bin, s.IPXEBinServerTFTP, s.IPXEBinServerHTTP, s.IPXEScriptURL)
 			pxe := dhcpv4.Options{
 				// PXE Boot Server Discovery Control - bypass, just boot from filename.
 				6:  []byte{8}, // or []byte{8}
@@ -135,9 +135,16 @@ func (s *Server) setNetworkBootOpts(ctx context.Context, m *dhcpv4.DHCPv4, n *da
 }
 
 // bootfileAndNextServer returns the bootfile (string) and next server (net.IP).
-func (s *Server) bootfileAndNextServer(mac net.HardwareAddr, uClass UserClass, opt60, bin string, tftp netaddr.IPPort, ipxe, iscript *url.URL) (string, net.IP) {
+func (s *Server) bootfileAndNextServer(ctx context.Context, mac net.HardwareAddr, uClass UserClass, opt60, bin string, tftp netaddr.IPPort, ipxe, iscript *url.URL) (string, net.IP) {
 	var nextServer net.IP
 	var bootfile string
+	if s.OTELEnabled {
+		span := trace.SpanContextFromContext(ctx)
+		tID := span.TraceID().String()
+		sID := span.SpanID().String()
+		fID := span.TraceFlags().String()
+		bin = fmt.Sprintf("%s-00-%v-%v-%v", bin, tID, sID, fID)
+	}
 	// If a machine is in an ipxe boot loop, it is likely to be that we aren't matching on IPXE or Tinkerbell userclass (option 77).
 	switch { // order matters here.
 	case uClass == Tinkerbell, (s.UserClass != "" && uClass == s.UserClass): // this case gets us out of an ipxe boot loop.

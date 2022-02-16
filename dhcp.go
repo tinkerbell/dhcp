@@ -58,4 +58,10 @@ type Server struct {
 
 	// Backend is the backend to use for getting DHCP data.
 	Backend BackendReader
+
+	// OTELEnabled is used to determine if netboot options include otel naming.
+	// When true, the netboot filename will be appended with otel information.
+	// For example, the filename will be "snp.efi-00-23b1e307bb35484f535a1f772c06910e-d887dc3912240434-01".
+	// <original filename>-00-<trace id>-<span id>-<trace flags>
+	OTELEnabled bool
 }
