@@ -20,30 +20,18 @@ import (
 )
 
 func TestSetDHCPOpts(t *testing.T) {
-	type fields struct {
-		ctx               context.Context
-		Log               logr.Logger
-		ListenAddr        netaddr.IPPort
-		IPAddr            netaddr.IP
-		IPXEBinServerTFTP netaddr.IPPort
-		IPXEBinServerHTTP *url.URL
-		IPXEScriptURL     *url.URL
-		NetbootEnabled    bool
-		UserClass         UserClass
-		Backend           BackendReader
-	}
 	type args struct {
 		in0 context.Context
 		m   *dhcpv4.DHCPv4
 		d   *data.Dhcp
 	}
 	tests := map[string]struct {
-		fields fields
+		server Server
 		args   args
 		want   *dhcpv4.DHCPv4
 	}{
 		"success": {
-			fields: fields{Log: logr.Discard()},
+			server: Server{Log: logr.Discard()},
 			args: args{
 				in0: context.Background(),
 				m:   &dhcpv4.DHCPv4{Options: dhcpv4.OptionsFromList(dhcpv4.OptParameterRequestList(dhcpv4.OptionSubnetMask))},
@@ -102,16 +90,16 @@ func TestSetDHCPOpts(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			s := &Server{
-				ctx:               tt.fields.ctx,
-				Log:               tt.fields.Log,
-				Listener:          tt.fields.ListenAddr,
-				IPAddr:            tt.fields.IPAddr,
-				IPXEBinServerTFTP: tt.fields.IPXEBinServerTFTP,
-				IPXEBinServerHTTP: tt.fields.IPXEBinServerHTTP,
-				IPXEScriptURL:     tt.fields.IPXEScriptURL,
-				NetbootEnabled:    tt.fields.NetbootEnabled,
-				UserClass:         tt.fields.UserClass,
-				Backend:           tt.fields.Backend,
+				ctx:               tt.server.ctx,
+				Log:               tt.server.Log,
+				Listener:          tt.server.Listener,
+				IPAddr:            tt.server.IPAddr,
+				IPXEBinServerTFTP: tt.server.IPXEBinServerTFTP,
+				IPXEBinServerHTTP: tt.server.IPXEBinServerHTTP,
+				IPXEScriptURL:     tt.server.IPXEScriptURL,
+				NetbootEnabled:    tt.server.NetbootEnabled,
+				UserClass:         tt.server.UserClass,
+				Backend:           tt.server.Backend,
 			}
 			mods := s.setDHCPOpts(tt.args.in0, tt.args.m, tt.args.d)
 			finalPkt, err := dhcpv4.New(mods...)
@@ -154,19 +142,6 @@ func TestArch(t *testing.T) {
 }
 
 func TestBootfileAndNextServer(t *testing.T) {
-	type fields struct {
-		ctx               context.Context
-		Log               logr.Logger
-		ListenAddr        netaddr.IPPort
-		IPAddr            netaddr.IP
-		IPXEBinServerTFTP netaddr.IPPort
-		IPXEBinServerHTTP *url.URL
-		IPXEScriptURL     *url.URL
-		NetbootEnabled    bool
-		UserClass         UserClass
-		Backend           BackendReader
-		OTELEnabled       bool
-	}
 	type args struct {
 		mac     net.HardwareAddr
 		uClass  UserClass
@@ -177,13 +152,13 @@ func TestBootfileAndNextServer(t *testing.T) {
 		iscript *url.URL
 	}
 	tests := map[string]struct {
-		fields       fields
+		server       Server
 		args         args
 		wantBootFile string
 		wantNextSrv  net.IP
 	}{
 		"success bootfile only": {
-			fields: fields{Log: logr.Discard()},
+			server: Server{Log: logr.Discard()},
 			args: args{
 				uClass:  Tinkerbell,
 				iscript: &url.URL{Scheme: "http", Host: "localhost:8080", Path: "/auto.ipxe"},
@@ -192,7 +167,7 @@ func TestBootfileAndNextServer(t *testing.T) {
 			wantNextSrv:  nil,
 		},
 		"success httpClient": {
-			fields: fields{Log: logr.Discard()},
+			server: Server{Log: logr.Discard()},
 			args: args{
 				mac:   net.HardwareAddr{0x01, 0x02, 0x03, 0x04, 0x05, 0x06},
 				opt60: httpClient.String(),
@@ -203,7 +178,7 @@ func TestBootfileAndNextServer(t *testing.T) {
 			wantNextSrv:  net.IPv4(0, 0, 0, 0),
 		},
 		"success userclass iPXE": {
-			fields: fields{Log: logr.Discard()},
+			server: Server{Log: logr.Discard()},
 			args: args{
 				mac:    net.HardwareAddr{0x01, 0x02, 0x03, 0x04, 0x05, 0x07},
 				uClass: IPXE,
@@ -215,7 +190,7 @@ func TestBootfileAndNextServer(t *testing.T) {
 			wantNextSrv:  net.ParseIP("192.168.6.5"),
 		},
 		"success userclass iPXE with otel": {
-			fields: fields{Log: logr.Discard(), OTELEnabled: true},
+			server: Server{Log: logr.Discard(), OTELEnabled: true},
 			args: args{
 				mac:    net.HardwareAddr{0x01, 0x02, 0x03, 0x04, 0x05, 0x07},
 				uClass: IPXE,
@@ -227,7 +202,7 @@ func TestBootfileAndNextServer(t *testing.T) {
 			wantNextSrv:  net.ParseIP("192.168.6.5"),
 		},
 		"success default": {
-			fields: fields{Log: logr.Discard()},
+			server: Server{Log: logr.Discard()},
 			args: args{
 				mac:  net.HardwareAddr{0x01, 0x02, 0x03, 0x04, 0x05, 0x07},
 				bin:  "unidonly.kpxe",
@@ -241,19 +216,19 @@ func TestBootfileAndNextServer(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			s := &Server{
-				ctx:               tt.fields.ctx,
-				Log:               tt.fields.Log,
-				Listener:          tt.fields.ListenAddr,
-				IPAddr:            tt.fields.IPAddr,
-				IPXEBinServerTFTP: tt.fields.IPXEBinServerTFTP,
-				IPXEBinServerHTTP: tt.fields.IPXEBinServerHTTP,
-				IPXEScriptURL:     tt.fields.IPXEScriptURL,
-				NetbootEnabled:    tt.fields.NetbootEnabled,
-				UserClass:         tt.fields.UserClass,
-				Backend:           tt.fields.Backend,
-				OTELEnabled:       tt.fields.OTELEnabled,
+				ctx:               tt.server.ctx,
+				Log:               tt.server.Log,
+				Listener:          tt.server.Listener,
+				IPAddr:            tt.server.IPAddr,
+				IPXEBinServerTFTP: tt.server.IPXEBinServerTFTP,
+				IPXEBinServerHTTP: tt.server.IPXEBinServerHTTP,
+				IPXEScriptURL:     tt.server.IPXEScriptURL,
+				NetbootEnabled:    tt.server.NetbootEnabled,
+				UserClass:         tt.server.UserClass,
+				Backend:           tt.server.Backend,
+				OTELEnabled:       tt.server.OTELEnabled,
 			}
-			bootfile, nextServer := s.bootfileAndNextServer(tt.fields.ctx, tt.args.mac, tt.args.uClass, tt.args.opt60, tt.args.bin, tt.args.tftp, tt.args.ipxe, tt.args.iscript)
+			bootfile, nextServer := s.bootfileAndNextServer(tt.server.ctx, tt.args.mac, tt.args.uClass, tt.args.opt60, tt.args.bin, tt.args.tftp, tt.args.ipxe, tt.args.iscript)
 			if diff := cmp.Diff(tt.wantBootFile, bootfile); diff != "" {
 				t.Fatal("bootfile", diff)
 			}
@@ -265,30 +240,18 @@ func TestBootfileAndNextServer(t *testing.T) {
 }
 
 func TestSetNetworkBootOpts(t *testing.T) {
-	type fields struct {
-		ctx               context.Context
-		Log               logr.Logger
-		ListenAddr        netaddr.IPPort
-		IPAddr            netaddr.IP
-		IPXEBinServerTFTP netaddr.IPPort
-		IPXEBinServerHTTP *url.URL
-		IPXEScriptURL     *url.URL
-		NetbootEnabled    bool
-		UserClass         UserClass
-		Backend           BackendReader
-	}
 	type args struct {
 		in0 context.Context
 		m   *dhcpv4.DHCPv4
 		n   *data.Netboot
 	}
 	tests := map[string]struct {
-		fields fields
+		server Server
 		args   args
 		want   *dhcpv4.DHCPv4
 	}{
 		"netboot not allowed": {
-			fields: fields{Log: logr.Discard()},
+			server: Server{Log: logr.Discard()},
 			args: args{
 				in0: context.Background(),
 				m:   &dhcpv4.DHCPv4{},
@@ -297,7 +260,7 @@ func TestSetNetworkBootOpts(t *testing.T) {
 			want: &dhcpv4.DHCPv4{ServerIPAddr: net.IPv4(0, 0, 0, 0), BootFileName: "/netboot-not-allowed"},
 		},
 		"netboot allowed": {
-			fields: fields{Log: logr.Discard(), IPXEScriptURL: &url.URL{Scheme: "http", Host: "localhost:8181", Path: "/01:02:03:04:05:06/auto.ipxe"}},
+			server: Server{Log: logr.Discard(), IPXEScriptURL: &url.URL{Scheme: "http", Host: "localhost:8181", Path: "/01:02:03:04:05:06/auto.ipxe"}},
 			args: args{
 				in0: context.Background(),
 				m: &dhcpv4.DHCPv4{
@@ -319,7 +282,7 @@ func TestSetNetworkBootOpts(t *testing.T) {
 			)},
 		},
 		"netboot not allowed, arch unknown": {
-			fields: fields{Log: logr.Discard(), IPXEScriptURL: &url.URL{Scheme: "http", Host: "localhost:8181", Path: "/01:02:03:04:05:06/auto.ipxe"}},
+			server: Server{Log: logr.Discard(), IPXEScriptURL: &url.URL{Scheme: "http", Host: "localhost:8181", Path: "/01:02:03:04:05:06/auto.ipxe"}},
 			args: args{
 				in0: context.Background(),
 				m: &dhcpv4.DHCPv4{
@@ -337,16 +300,16 @@ func TestSetNetworkBootOpts(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			s := &Server{
-				ctx:               tt.fields.ctx,
-				Log:               tt.fields.Log,
-				Listener:          tt.fields.ListenAddr,
-				IPAddr:            tt.fields.IPAddr,
-				IPXEBinServerTFTP: tt.fields.IPXEBinServerTFTP,
-				IPXEBinServerHTTP: tt.fields.IPXEBinServerHTTP,
-				IPXEScriptURL:     tt.fields.IPXEScriptURL,
-				NetbootEnabled:    tt.fields.NetbootEnabled,
-				UserClass:         tt.fields.UserClass,
-				Backend:           tt.fields.Backend,
+				ctx:               tt.server.ctx,
+				Log:               tt.server.Log,
+				Listener:          tt.server.Listener,
+				IPAddr:            tt.server.IPAddr,
+				IPXEBinServerTFTP: tt.server.IPXEBinServerTFTP,
+				IPXEBinServerHTTP: tt.server.IPXEBinServerHTTP,
+				IPXEScriptURL:     tt.server.IPXEScriptURL,
+				NetbootEnabled:    tt.server.NetbootEnabled,
+				UserClass:         tt.server.UserClass,
+				Backend:           tt.server.Backend,
 			}
 			gotFunc := s.setNetworkBootOpts(tt.args.in0, tt.args.m, tt.args.n)
 			got := new(dhcpv4.DHCPv4)
