@@ -25,7 +25,7 @@ import (
 type mockBackend struct {
 	err          error
 	allowNetboot bool
-	ipxeScript   string
+	ipxeScript   *url.URL
 }
 
 func (m *mockBackend) Read(context.Context, net.HardwareAddr) (*data.Dhcp, *data.Netboot, error) {
@@ -56,32 +56,20 @@ func (m *mockBackend) Read(context.Context, net.HardwareAddr) (*data.Dhcp, *data
 }
 
 func TestHandleDiscover(t *testing.T) {
-	type fields struct {
-		ctx               context.Context
-		Log               logr.Logger
-		ListenAddr        netaddr.IPPort
-		IPAddr            netaddr.IP
-		IPXEBinServerTFTP netaddr.IPPort
-		IPXEBinServerHTTP *url.URL
-		IPXEScriptURL     *url.URL
-		NetbootEnabled    bool
-		UserClass         UserClass
-		Backend           BackendReader
-	}
 	type args struct {
 		m *dhcpv4.DHCPv4
 	}
 	tests := map[string]struct {
-		fields fields
+		server Server
 		args   args
 		want   *dhcpv4.DHCPv4
 	}{
 		"success": {
-			fields: fields{
-				Log:        logr.Discard(),
-				Backend:    &mockBackend{},
-				ListenAddr: netaddr.IPPortFrom(netaddr.IPv4(192, 168, 1, 1), 67),
-				IPAddr:     netaddr.IPv4(192, 168, 1, 1),
+			server: Server{
+				Log:      logr.Discard(),
+				Backend:  &mockBackend{},
+				Listener: netaddr.IPPortFrom(netaddr.IPv4(192, 168, 1, 1), 67),
+				IPAddr:   netaddr.IPv4(192, 168, 1, 1),
 			},
 			args: args{
 				m: &dhcpv4.DHCPv4{
@@ -94,7 +82,6 @@ func TestHandleDiscover(t *testing.T) {
 				YourIPAddr:   []byte{192, 168, 1, 100},
 				ServerIPAddr: []byte{192, 168, 1, 1},
 				ClientIPAddr: []byte{0, 0, 0, 0},
-				// GatewayIPAddr: []byte{0, 0, 0, 0},
 				Options: dhcpv4.OptionsFromList(
 					dhcpv4.OptSubnetMask(net.IPMask{255, 255, 255, 0}),
 					dhcpv4.OptDomainName("mydomain.com"),
@@ -117,13 +104,13 @@ func TestHandleDiscover(t *testing.T) {
 			},
 		},
 		"success with netboot options": {
-			fields: fields{
+			server: Server{
 				Log: logr.Discard(),
 				Backend: &mockBackend{
 					allowNetboot: true,
-					ipxeScript:   "http://localhost:8181/01:02:03:04:05:06/auto.ipxe",
+					ipxeScript:   &url.URL{Scheme: "http", Host: "localhost:8181", Path: "/01:02:03:04:05:06/auto.ipxe"},
 				},
-				ListenAddr:     netaddr.IPPortFrom(netaddr.IPv4(192, 168, 1, 1), 67),
+				Listener:       netaddr.IPPortFrom(netaddr.IPv4(192, 168, 1, 1), 67),
 				IPAddr:         netaddr.IPv4(192, 168, 1, 1),
 				IPXEScriptURL:  &url.URL{Scheme: "http", Host: "localhost:8181", Path: "/01:02:03:04:05:06/auto.ipxe"},
 				NetbootEnabled: true,
@@ -143,7 +130,6 @@ func TestHandleDiscover(t *testing.T) {
 				ClientHWAddr: []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06},
 				YourIPAddr:   []byte{192, 168, 1, 100},
 				ClientIPAddr: []byte{0, 0, 0, 0},
-				// GatewayIPAddr: []byte{0, 0, 0, 0},
 				BootFileName: "http://localhost:8181/01:02:03:04:05:06/auto.ipxe",
 				Options: dhcpv4.OptionsFromList(
 					dhcpv4.OptSubnetMask(net.IPMask{255, 255, 255, 0}),
@@ -172,7 +158,7 @@ func TestHandleDiscover(t *testing.T) {
 			},
 		},
 		"fail backend error": {
-			fields: fields{
+			server: Server{
 				Log:     logr.Discard(),
 				Backend: &mockBackend{err: fmt.Errorf("test error")},
 			},
@@ -184,18 +170,7 @@ func TestHandleDiscover(t *testing.T) {
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			s := &Server{
-				ctx:               tt.fields.ctx,
-				Log:               tt.fields.Log,
-				Listener:          tt.fields.ListenAddr,
-				IPAddr:            tt.fields.IPAddr,
-				IPXEBinServerTFTP: tt.fields.IPXEBinServerTFTP,
-				IPXEBinServerHTTP: tt.fields.IPXEBinServerHTTP,
-				IPXEScriptURL:     tt.fields.IPXEScriptURL,
-				NetbootEnabled:    tt.fields.NetbootEnabled,
-				UserClass:         tt.fields.UserClass,
-				Backend:           tt.fields.Backend,
-			}
+			s := tt.server
 			got := s.handleDiscover(context.Background(), otel.Tracer("DHCP"), tt.args.m)
 			if diff := cmp.Diff(got, tt.want); diff != "" {
 				t.Fatal(diff)
@@ -205,32 +180,20 @@ func TestHandleDiscover(t *testing.T) {
 }
 
 func TestHandleRequest(t *testing.T) {
-	type fields struct {
-		ctx               context.Context
-		Log               logr.Logger
-		ListenAddr        netaddr.IPPort
-		IPAddr            netaddr.IP
-		IPXEBinServerTFTP netaddr.IPPort
-		IPXEBinServerHTTP *url.URL
-		IPXEScriptURL     *url.URL
-		NetbootEnabled    bool
-		UserClass         UserClass
-		Backend           BackendReader
-	}
 	type args struct {
 		m *dhcpv4.DHCPv4
 	}
 	tests := map[string]struct {
-		fields fields
+		server Server
 		args   args
 		want   *dhcpv4.DHCPv4
 	}{
 		"success": {
-			fields: fields{
-				Log:        logr.Discard(),
-				Backend:    &mockBackend{},
-				ListenAddr: netaddr.IPPortFrom(netaddr.IPv4(192, 168, 1, 1), 67),
-				IPAddr:     netaddr.IPv4(192, 168, 1, 1),
+			server: Server{
+				Log:      logr.Discard(),
+				Backend:  &mockBackend{},
+				Listener: netaddr.IPPortFrom(netaddr.IPv4(192, 168, 1, 1), 67),
+				IPAddr:   netaddr.IPv4(192, 168, 1, 1),
 			},
 			args: args{
 				m: &dhcpv4.DHCPv4{
@@ -243,7 +206,6 @@ func TestHandleRequest(t *testing.T) {
 				YourIPAddr:   []byte{192, 168, 1, 100},
 				ServerIPAddr: []byte{192, 168, 1, 1},
 				ClientIPAddr: []byte{0, 0, 0, 0},
-				// GatewayIPAddr: []byte{0, 0, 0, 0},
 				Options: dhcpv4.OptionsFromList(
 					dhcpv4.OptSubnetMask(net.IPMask{255, 255, 255, 0}),
 					dhcpv4.OptDomainName("mydomain.com"),
@@ -266,13 +228,13 @@ func TestHandleRequest(t *testing.T) {
 			},
 		},
 		"success with netboot options": {
-			fields: fields{
+			server: Server{
 				Log: logr.Discard(),
 				Backend: &mockBackend{
 					allowNetboot: true,
-					ipxeScript:   "http://localhost:8181/01:02:03:04:05:06/auto.ipxe",
+					ipxeScript:   &url.URL{Scheme: "http", Host: "localhost:8181", Path: "/01:02:03:04:05:06/auto.ipxe"},
 				},
-				ListenAddr:     netaddr.IPPortFrom(netaddr.IPv4(192, 168, 1, 1), 67),
+				Listener:       netaddr.IPPortFrom(netaddr.IPv4(192, 168, 1, 1), 67),
 				IPAddr:         netaddr.IPv4(192, 168, 1, 1),
 				IPXEScriptURL:  &url.URL{Scheme: "http", Host: "localhost:8181", Path: "/01:02:03:04:05:06/auto.ipxe"},
 				NetbootEnabled: true,
@@ -292,7 +254,6 @@ func TestHandleRequest(t *testing.T) {
 				ClientHWAddr: []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06},
 				YourIPAddr:   []byte{192, 168, 1, 100},
 				ClientIPAddr: []byte{0, 0, 0, 0},
-				// GatewayIPAddr: []byte{0, 0, 0, 0},
 				BootFileName: "http://localhost:8181/01:02:03:04:05:06/auto.ipxe",
 				Options: dhcpv4.OptionsFromList(
 					dhcpv4.OptSubnetMask(net.IPMask{255, 255, 255, 0}),
@@ -321,7 +282,7 @@ func TestHandleRequest(t *testing.T) {
 			},
 		},
 		"fail backend error": {
-			fields: fields{
+			server: Server{
 				Log:     logr.Discard(),
 				Backend: &mockBackend{err: fmt.Errorf("test error")},
 			},
@@ -333,18 +294,7 @@ func TestHandleRequest(t *testing.T) {
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			s := &Server{
-				ctx:               tt.fields.ctx,
-				Log:               tt.fields.Log,
-				Listener:          tt.fields.ListenAddr,
-				IPAddr:            tt.fields.IPAddr,
-				IPXEBinServerTFTP: tt.fields.IPXEBinServerTFTP,
-				IPXEBinServerHTTP: tt.fields.IPXEBinServerHTTP,
-				IPXEScriptURL:     tt.fields.IPXEScriptURL,
-				NetbootEnabled:    tt.fields.NetbootEnabled,
-				UserClass:         tt.fields.UserClass,
-				Backend:           tt.fields.Backend,
-			}
+			s := tt.server
 			got := s.handleRequest(context.Background(), otel.Tracer("DHCP"), tt.args.m)
 			if diff := cmp.Diff(got, tt.want); diff != "" {
 				t.Fatal(diff)
@@ -355,8 +305,8 @@ func TestHandleRequest(t *testing.T) {
 
 func TestHandleRelease(t *testing.T) {
 	out := &bytes.Buffer{}
-	s := &Server{Log: stdr.New(log.New(out, "", log.Lshortfile))}
-	expectedLog := `handler.go:135: "level"=0 "msg"="received release, no response required"`
+	s := &Server{Log: stdr.New(log.New(out, "", 0))}
+	expectedLog := `"level"=0 "msg"="received release, no response required"`
 	s.handleRelease(context.Background(), &dhcpv4.DHCPv4{})
 	if diff := cmp.Diff(out.String(), expectedLog+"\n"); diff != "" {
 		t.Fatal(diff)
@@ -364,33 +314,21 @@ func TestHandleRelease(t *testing.T) {
 }
 
 func TestHandleFunc(t *testing.T) {
-	type fields struct {
-		ctx               context.Context
-		Log               logr.Logger
-		ListenAddr        netaddr.IPPort
-		IPAddr            netaddr.IP
-		IPXEBinServerTFTP netaddr.IPPort
-		IPXEBinServerHTTP *url.URL
-		IPXEScriptURL     *url.URL
-		NetbootEnabled    bool
-		UserClass         UserClass
-		Backend           BackendReader
-	}
 	type args struct {
 		peer net.Addr
 		m    *dhcpv4.DHCPv4
 	}
 	tests := map[string]struct {
-		fields fields
+		server Server
 		args   args
 		out    *bytes.Buffer
 		want   string
 	}{
 		"fail unknown DHCP message type": {
-			fields: fields{
-				ctx:        context.Background(),
-				ListenAddr: netaddr.IPPortFrom(netaddr.IPv4(127, 0, 0, 1), 67),
-				IPAddr:     netaddr.IPv4(127, 0, 0, 1),
+			server: Server{
+				ctx:      context.Background(),
+				Listener: netaddr.IPPortFrom(netaddr.IPv4(127, 0, 0, 1), 67),
+				IPAddr:   netaddr.IPv4(127, 0, 0, 1),
 			},
 			args: args{
 				peer: &net.UDPAddr{IP: net.IP{127, 0, 0, 1}, Port: 6767},
@@ -403,10 +341,10 @@ func TestHandleFunc(t *testing.T) {
 				},
 			},
 			out:  &bytes.Buffer{},
-			want: `handler.go:32: "level"=0 "msg"="received unknown message type" "type"="INFORM"` + "\n",
+			want: `"level"=0 "msg"="received unknown message type" "type"="INFORM"` + "\n",
 		},
 		"success discover message type": {
-			fields: fields{
+			server: Server{
 				ctx:     context.Background(),
 				Backend: &mockBackend{},
 			},
@@ -420,11 +358,11 @@ func TestHandleFunc(t *testing.T) {
 					),
 				},
 			},
-			want: `handler.go:52: "level"=0 "msg"="received discover packet"` + "\n" + `handler.go:86: "level"=0 "msg"="sending offer packet"` + "\n",
+			want: `"level"=0 "msg"="received discover packet"` + "\n" + `"level"=0 "msg"="sending offer packet"` + "\n",
 			out:  &bytes.Buffer{},
 		},
 		"success request message type": {
-			fields: fields{
+			server: Server{
 				ctx:     context.Background(),
 				Backend: &mockBackend{},
 			},
@@ -438,11 +376,11 @@ func TestHandleFunc(t *testing.T) {
 					),
 				},
 			},
-			want: `handler.go:93: "level"=0 "msg"="received request packet"` + "\n" + `handler.go:125: "level"=0 "msg"="sending ack packet"` + "\n",
+			want: `"level"=0 "msg"="received request packet"` + "\n" + `"level"=0 "msg"="sending ack packet"` + "\n",
 			out:  &bytes.Buffer{},
 		},
 		"success release message type": {
-			fields: fields{
+			server: Server{
 				ctx:     context.Background(),
 				Backend: &mockBackend{},
 			},
@@ -456,32 +394,46 @@ func TestHandleFunc(t *testing.T) {
 					),
 				},
 			},
-			want: `handler.go:135: "level"=0 "msg"="received release, no response required"` + "\n",
+			want: `"level"=0 "msg"="received release, no response required"` + "\n",
+			out:  &bytes.Buffer{},
+		},
+		"fail replying": {
+			server: Server{
+				ctx:     context.Background(),
+				Backend: &mockBackend{},
+			},
+			args: args{
+				peer: nil,
+				m: &dhcpv4.DHCPv4{
+					OpCode:       dhcpv4.OpcodeBootRequest,
+					ClientHWAddr: []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06},
+					Options: dhcpv4.OptionsFromList(
+						dhcpv4.OptMessageType(dhcpv4.MessageTypeDiscover),
+					),
+				},
+			},
+			want: `"level"=0 "msg"="received discover packet"` + "\n" + `"level"=0 "msg"="sending offer packet"` + "\n" + `"msg"="failed to send DHCP" "error"="write udp4 127.0.0.1:%v: invalid argument"` + "\n",
 			out:  &bytes.Buffer{},
 		},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			l := stdr.New(log.New(tt.out, "", log.Lshortfile))
-			s := &Server{
-				ctx:               tt.fields.ctx,
-				Log:               l,
-				Listener:          tt.fields.ListenAddr,
-				IPAddr:            tt.fields.IPAddr,
-				IPXEBinServerTFTP: tt.fields.IPXEBinServerTFTP,
-				IPXEBinServerHTTP: tt.fields.IPXEBinServerHTTP,
-				IPXEScriptURL:     tt.fields.IPXEScriptURL,
-				NetbootEnabled:    tt.fields.NetbootEnabled,
-				UserClass:         tt.fields.UserClass,
-				Backend:           tt.fields.Backend,
-			}
+			s := tt.server
+			s.Log = stdr.New(log.New(tt.out, "", 0))
 			conn, err := nettest.NewLocalPacketListener("udp")
 			if err != nil {
 				t.Fatal(err)
 			}
+			want := tt.want
+			if tt.args.peer == nil {
+				i, err := netaddr.ParseIPPort(conn.LocalAddr().String())
+				if err != nil {
+					t.Error(err)
+				}
+				want = fmt.Sprintf(tt.want, i.UDPAddr().Port)
+			}
 			s.handleFunc(conn, tt.args.peer, tt.args.m)
-			if diff := cmp.Diff(tt.out.String(), tt.want); diff != "" {
-				t.Log(tt.out.String())
+			if diff := cmp.Diff(tt.out.String(), want); diff != "" {
 				t.Fatal(diff)
 			}
 		})

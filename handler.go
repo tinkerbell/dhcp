@@ -65,7 +65,7 @@ func (s *Server) handleDiscover(ctx context.Context, tracer trace.Tracer, m *dhc
 		attribute.String("DomainName", d.DomainName),
 		attribute.Int("LeaseTime", int(d.LeaseTime)),
 		attribute.Bool("AllowNetboot", n.AllowNetboot),
-		attribute.String("IpxeScriptURL", n.IpxeScriptURL),
+		attribute.String("IpxeScriptURL", fmt.Sprintf("%v", n.IpxeScriptURL)),
 	)
 	span.SetStatus(codes.Ok, "done reading from backend")
 	span.End()
@@ -104,7 +104,7 @@ func (s *Server) handleRequest(ctx context.Context, tracer trace.Tracer, m *dhcp
 		attribute.String("DomainName", d.DomainName),
 		attribute.Int("LeaseTime", int(d.LeaseTime)),
 		attribute.Bool("AllowNetboot", n.AllowNetboot),
-		attribute.String("IpxeScriptURL", n.IpxeScriptURL),
+		attribute.String("IpxeScriptURL", fmt.Sprintf("%v", n.IpxeScriptURL)),
 	)
 	span.SetStatus(codes.Ok, "reading from backend done")
 	span.End()
