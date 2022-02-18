@@ -3,6 +3,7 @@ package data
 
 import (
 	"net"
+	"net/url"
 
 	"inet.af/netaddr"
 )
@@ -24,6 +25,6 @@ type Dhcp struct {
 
 // Netboot holds info used in netbooting a client.
 type Netboot struct {
-	AllowNetboot  bool   // If true, the client will be provided netboot options in the DHCP offer/ack.
-	IpxeScriptURL string // Overrides default value of that is passed into DHCP on startup.
+	AllowNetboot  bool     // If true, the client will be provided netboot options in the DHCP offer/ack.
+	IpxeScriptURL *url.URL // Overrides default value of that is passed into DHCP on startup.
 }

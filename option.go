@@ -121,7 +121,11 @@ func (s *Server) setNetworkBootOpts(ctx context.Context, m *dhcpv4.DHCPv4, n *da
 			}
 			mac := m.ClientHWAddr
 			uClass := UserClass(string(m.GetOneOption(dhcpv4.OptionUserClassInformation)))
-			d.BootFileName, d.ServerIPAddr = s.bootfileAndNextServer(ctx, mac, uClass, opt60, bin, s.IPXEBinServerTFTP, s.IPXEBinServerHTTP, s.IPXEScriptURL)
+			ipxeScript := s.IPXEScriptURL
+			if n.IpxeScriptURL != nil {
+				ipxeScript = n.IpxeScriptURL
+			}
+			d.BootFileName, d.ServerIPAddr = s.bootfileAndNextServer(ctx, mac, uClass, opt60, bin, s.IPXEBinServerTFTP, s.IPXEBinServerHTTP, ipxeScript)
 			pxe := dhcpv4.Options{
 				// PXE Boot Server Discovery Control - bypass, just boot from filename.
 				6:  []byte{8}, // or []byte{8}

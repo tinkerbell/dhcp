@@ -271,7 +271,7 @@ func TestSetNetworkBootOpts(t *testing.T) {
 						dhcpv4.OptClientArch(iana.EFI_X86_64_HTTP),
 					),
 				},
-				n: &data.Netboot{AllowNetboot: true},
+				n: &data.Netboot{AllowNetboot: true, IpxeScriptURL: &url.URL{Scheme: "http", Host: "localhost:8181", Path: "/01:02:03:04:05:06/auto.ipxe"}},
 			},
 			want: &dhcpv4.DHCPv4{BootFileName: "http://localhost:8181/01:02:03:04:05:06/auto.ipxe", Options: dhcpv4.OptionsFromList(
 				dhcpv4.OptGeneric(dhcpv4.OptionVendorSpecificInformation, dhcpv4.Options{
