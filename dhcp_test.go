@@ -2,6 +2,7 @@ package dhcp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"sync"
@@ -152,5 +153,13 @@ func TestGetInterfaceByIP(t *testing.T) {
 				t.Fatalf("%v", diffs)
 			}
 		})
+	}
+}
+
+func TestRead(t *testing.T) {
+	a := alwaysError{}
+	_, _, err := a.Read(context.Background(), nil)
+	if !errors.Is(err, ErrNilBackend) {
+		t.Errorf("expected error: %v, got: %v", ErrNilBackend, err)
 	}
 }

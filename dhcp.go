@@ -3,6 +3,7 @@ package dhcp
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"net/url"
 	"reflect"
@@ -10,6 +11,7 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/imdario/mergo"
 	"github.com/insomniacslk/dhcp/dhcpv4/server4"
+	"github.com/tinkerbell/dhcp/data"
 	"golang.org/x/sync/errgroup"
 	"inet.af/netaddr"
 )
@@ -72,6 +74,7 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 		Listener:       netaddr.IPPortFrom(netaddr.IPv4(0, 0, 0, 0), 67),
 		IPAddr:         defaultIP(),
 		NetbootEnabled: true,
+		Backend:        &alwaysError{},
 	}
 
 	err := mergo.Merge(s, defaults, mergo.WithTransformers(s))
@@ -93,6 +96,7 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 
 	g, ctx := errgroup.WithContext(ctx)
 	g.Go(func() error {
+		s.Log.Info("starting DHCP server", "port", s.Listener.Port(), "interface", s.IPAddr.String(), "conf", s)
 		return srv.Serve()
 	})
 
@@ -110,6 +114,7 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 		Listener:       netaddr.IPPortFrom(netaddr.IPv4(0, 0, 0, 0), 67),
 		IPAddr:         defaultIP(),
 		NetbootEnabled: true,
+		Backend:        &alwaysError{},
 	}
 
 	err := mergo.Merge(s, defaults, mergo.WithTransformers(s))
@@ -182,6 +187,17 @@ func (s *Server) Transformer(typ reflect.Type) func(dst, src reflect.Value) erro
 			}
 			return nil
 		}
+	case reflect.TypeOf(netaddr.IP{}):
+		return func(dst, src reflect.Value) error {
+			if dst.CanSet() {
+				isZero := dst.MethodByName("IsZero")
+				result := isZero.Call([]reflect.Value{})
+				if result[0].Bool() {
+					dst.Set(src)
+				}
+			}
+			return nil
+		}
 	}
 	return nil
 }
@@ -202,9 +218,18 @@ func defaultIP() netaddr.IP {
 			continue
 		}
 
-		if i, err := netaddr.ParseIP(v4.String()); err == nil {
+		if i, ok := netaddr.FromStdIP(v4); ok {
 			return i
 		}
 	}
 	return netaddr.IPv4(0, 0, 0, 0)
+}
+
+type alwaysError struct{}
+
+// ErrNilBackend is used when the backend is not specified.
+var ErrNilBackend = fmt.Errorf("please specify a backend")
+
+func (*alwaysError) Read(context.Context, net.HardwareAddr) (*data.DHCP, *data.Netboot, error) {
+	return nil, nil, ErrNilBackend
 }

@@ -10,8 +10,8 @@ require (
 	github.com/insomniacslk/dhcp v0.0.0-20220119180841-3c283ff8b7dd
 	go.opentelemetry.io/otel v1.4.0
 	go.opentelemetry.io/otel/trace v1.4.0
-	golang.org/x/net v0.0.0-20201110031124-69a78807bb2b
-	golang.org/x/sync v0.0.0-20201020160332-67f06af15bc9
+	golang.org/x/net v0.0.0-20210805182204-aaa1db679c0d
+	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
 	inet.af/netaddr v0.0.0-20211027220019-c74959edd3b6
 )
 
