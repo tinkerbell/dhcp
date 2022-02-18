@@ -136,7 +136,7 @@ func (s *Server) setNetworkBootOpts(ctx context.Context, m *dhcpv4.DHCPv4, n *da
 			a := arch(m)
 			bin, found := ArchToBootFile[a]
 			if !found {
-				s.Log.Error(fmt.Errorf("unable to find bootfile for arch"), "arch", a)
+				s.Log.Error(fmt.Errorf("unable to find bootfile for arch"), "network boot not allowed", "arch", a, "archInt", int(a), "mac", m.ClientHWAddr)
 				return
 			}
 			uClass := UserClass(string(m.GetOneOption(dhcpv4.OptionUserClassInformation)))
@@ -181,7 +181,7 @@ func (s *Server) bootfileAndNextServer(ctx context.Context, uClass UserClass, op
 		bootfile = fmt.Sprintf("%s/%s", ipxe, bin)
 		ns := net.ParseIP(ipxe.Host)
 		if ns == nil {
-			s.Log.Error(fmt.Errorf("unable to parse ipxe host"), "ipxe", ipxe.Host)
+			s.Log.Error(fmt.Errorf("unable to parse ipxe host"), "ipxe", ipxe.Host, "mac", mac)
 			ns = net.ParseIP("0.0.0.0")
 		}
 		nextServer = ns

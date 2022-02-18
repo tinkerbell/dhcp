@@ -96,7 +96,7 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 
 	g, ctx := errgroup.WithContext(ctx)
 	g.Go(func() error {
-		s.Log.Info("starting DHCP server", "port", s.Listener.Port(), "interface", s.IPAddr.String(), "conf", s)
+		s.Log.Info("starting DHCP server", "port", s.Listener.Port(), "interface", s.IPAddr.String())
 		return srv.Serve()
 	})
 
