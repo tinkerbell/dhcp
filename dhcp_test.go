@@ -157,7 +157,7 @@ func TestGetInterfaceByIP(t *testing.T) {
 }
 
 func TestRead(t *testing.T) {
-	a := alwaysError{}
+	a := noop{}
 	_, _, err := a.Read(context.Background(), nil)
 	if !errors.Is(err, ErrNilBackend) {
 		t.Errorf("expected error: %v, got: %v", ErrNilBackend, err)

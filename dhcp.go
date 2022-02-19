@@ -69,12 +69,11 @@ type Server struct {
 // Override the defaults by setting the Server struct fields.
 func (s *Server) ListenAndServe(ctx context.Context) error {
 	defaults := &Server{
-		ctx:            ctx,
-		Log:            logr.Discard(),
-		Listener:       netaddr.IPPortFrom(netaddr.IPv4(0, 0, 0, 0), 67),
-		IPAddr:         defaultIP(),
-		NetbootEnabled: true,
-		Backend:        &alwaysError{},
+		ctx:      ctx,
+		Log:      logr.Discard(),
+		Listener: netaddr.IPPortFrom(netaddr.IPv4(0, 0, 0, 0), 67),
+		IPAddr:   defaultIP(),
+		Backend:  &noop{},
 	}
 
 	err := mergo.Merge(s, defaults, mergo.WithTransformers(s))
@@ -109,12 +108,11 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 // Serve run the DHCP server using the given PacketConn.
 func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 	defaults := &Server{
-		ctx:            ctx,
-		Log:            logr.Discard(),
-		Listener:       netaddr.IPPortFrom(netaddr.IPv4(0, 0, 0, 0), 67),
-		IPAddr:         defaultIP(),
-		NetbootEnabled: true,
-		Backend:        &alwaysError{},
+		ctx:      ctx,
+		Log:      logr.Discard(),
+		Listener: netaddr.IPPortFrom(netaddr.IPv4(0, 0, 0, 0), 67),
+		IPAddr:   defaultIP(),
+		Backend:  &noop{},
 	}
 
 	err := mergo.Merge(s, defaults, mergo.WithTransformers(s))
@@ -198,6 +196,10 @@ func (s *Server) Transformer(typ reflect.Type) func(dst, src reflect.Value) erro
 			}
 			return nil
 		}
+	case reflect.TypeOf(s.Backend):
+		return func(dst, src reflect.Value) error {
+			return nil
+		}
 	}
 	return nil
 }
@@ -225,11 +227,11 @@ func defaultIP() netaddr.IP {
 	return netaddr.IPv4(0, 0, 0, 0)
 }
 
-type alwaysError struct{}
+type noop struct{}
 
 // ErrNilBackend is used when the backend is not specified.
 var ErrNilBackend = fmt.Errorf("please specify a backend")
 
-func (*alwaysError) Read(context.Context, net.HardwareAddr) (*data.DHCP, *data.Netboot, error) {
+func (*noop) Read(context.Context, net.HardwareAddr) (*data.DHCP, *data.Netboot, error) {
 	return nil, nil, ErrNilBackend
 }

@@ -181,7 +181,7 @@ func (s *Server) bootfileAndNextServer(ctx context.Context, uClass UserClass, op
 		bootfile = fmt.Sprintf("%s/%s", ipxe, bin)
 		ns := net.ParseIP(ipxe.Host)
 		if ns == nil {
-			s.Log.Error(fmt.Errorf("unable to parse ipxe host"), "ipxe", ipxe.Host, "mac", mac)
+			s.Log.Error(fmt.Errorf("unable to parse ipxe host"), "ipxe", ipxe.Host)
 			ns = net.ParseIP("0.0.0.0")
 		}
 		nextServer = ns
