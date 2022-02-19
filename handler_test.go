@@ -120,8 +120,11 @@ func TestHandleDiscover(t *testing.T) {
 					ClientHWAddr: []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06},
 					Options: dhcpv4.OptionsFromList(
 						dhcpv4.OptUserClass("Tinkerbell"),
-						dhcpv4.OptClassIdentifier("HTTPClient"),
+						dhcpv4.OptClassIdentifier("HTTPClient:Arch:xxxxx:UNDI:yyyzzz"),
 						dhcpv4.OptClientArch(iana.EFI_ARM64_HTTP),
+						dhcpv4.OptGeneric(dhcpv4.OptionClientNetworkInterfaceIdentifier, []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}),
+						dhcpv4.OptGeneric(dhcpv4.OptionClientMachineIdentifier, []byte{0x00, 0x02, 0x03, 0x04, 0x05, 0x06, 0x00, 0x02, 0x03, 0x04, 0x05, 0x06, 0x00, 0x02, 0x03, 0x04, 0x05}),
+						dhcpv4.OptMessageType(dhcpv4.MessageTypeDiscover),
 					),
 				},
 			},
@@ -246,6 +249,9 @@ func TestHandleRequest(t *testing.T) {
 						dhcpv4.OptUserClass("Tinkerbell"),
 						dhcpv4.OptClassIdentifier("HTTPClient"),
 						dhcpv4.OptClientArch(iana.EFI_ARM64_HTTP),
+						dhcpv4.OptGeneric(dhcpv4.OptionClientNetworkInterfaceIdentifier, []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}),
+						dhcpv4.OptGeneric(dhcpv4.OptionClientMachineIdentifier, []byte{0x00, 0x02, 0x03, 0x04, 0x05, 0x06, 0x00, 0x02, 0x03, 0x04, 0x05, 0x06, 0x00, 0x02, 0x03, 0x04, 0x05}),
+						dhcpv4.OptMessageType(dhcpv4.MessageTypeRequest),
 					),
 				},
 			},
@@ -306,8 +312,8 @@ func TestHandleRequest(t *testing.T) {
 func TestHandleRelease(t *testing.T) {
 	out := &bytes.Buffer{}
 	s := &Server{Log: stdr.New(log.New(out, "", 0))}
-	expectedLog := `"level"=0 "msg"="received release, no response required"`
-	s.handleRelease(context.Background(), &dhcpv4.DHCPv4{})
+	expectedLog := `"level"=0 "msg"="received release, no response required" "mac"="01:02:03:04:05:06"`
+	s.handleRelease(context.Background(), &dhcpv4.DHCPv4{ClientHWAddr: []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}})
 	if diff := cmp.Diff(out.String(), expectedLog+"\n"); diff != "" {
 		t.Fatal(diff)
 	}
@@ -341,7 +347,7 @@ func TestHandleFunc(t *testing.T) {
 				},
 			},
 			out:  &bytes.Buffer{},
-			want: `"level"=0 "msg"="received unknown message type" "type"="INFORM"` + "\n",
+			want: `"level"=0 "msg"="received unknown message type" "mac"="01:02:03:04:05:06" "type"="INFORM"` + "\n",
 		},
 		"success discover message type": {
 			server: Server{
@@ -358,7 +364,7 @@ func TestHandleFunc(t *testing.T) {
 					),
 				},
 			},
-			want: `"level"=0 "msg"="received discover packet"` + "\n" + `"level"=0 "msg"="sending offer packet"` + "\n",
+			want: `"level"=0 "msg"="received discover packet" "mac"="01:02:03:04:05:06"` + "\n" + `"level"=0 "msg"="sending offer packet" "mac"="01:02:03:04:05:06"` + "\n" + `"level"=0 "msg"="sent DHCP response" "mac"="01:02:03:04:05:06"` + "\n",
 			out:  &bytes.Buffer{},
 		},
 		"success request message type": {
@@ -376,7 +382,7 @@ func TestHandleFunc(t *testing.T) {
 					),
 				},
 			},
-			want: `"level"=0 "msg"="received request packet"` + "\n" + `"level"=0 "msg"="sending ack packet"` + "\n",
+			want: `"level"=0 "msg"="received request packet" "mac"="01:02:03:04:05:06"` + "\n" + `"level"=0 "msg"="sending ack packet" "mac"="01:02:03:04:05:06"` + "\n" + `"level"=0 "msg"="sent DHCP response" "mac"="01:02:03:04:05:06"` + "\n",
 			out:  &bytes.Buffer{},
 		},
 		"success release message type": {
@@ -394,7 +400,7 @@ func TestHandleFunc(t *testing.T) {
 					),
 				},
 			},
-			want: `"level"=0 "msg"="received release, no response required"` + "\n",
+			want: `"level"=0 "msg"="received release, no response required" "mac"="01:02:03:04:05:06"` + "\n",
 			out:  &bytes.Buffer{},
 		},
 		"fail replying": {
@@ -412,7 +418,7 @@ func TestHandleFunc(t *testing.T) {
 					),
 				},
 			},
-			want: `"level"=0 "msg"="received discover packet"` + "\n" + `"level"=0 "msg"="sending offer packet"` + "\n" + `"msg"="failed to send DHCP" "error"="write udp4 127.0.0.1:%v: invalid argument"` + "\n",
+			want: `"level"=0 "msg"="received discover packet" "mac"="01:02:03:04:05:06"` + "\n" + `"level"=0 "msg"="sending offer packet" "mac"="01:02:03:04:05:06"` + "\n" + `"msg"="failed to send DHCP" "error"="write udp4 127.0.0.1:%v: invalid argument" "mac"="01:02:03:04:05:06"` + "\n",
 			out:  &bytes.Buffer{},
 		},
 	}
@@ -435,6 +441,58 @@ func TestHandleFunc(t *testing.T) {
 			s.handleFunc(conn, tt.args.peer, tt.args.m)
 			if diff := cmp.Diff(tt.out.String(), want); diff != "" {
 				t.Fatal(diff)
+			}
+		})
+	}
+}
+
+func TestIsNetbootClient(t *testing.T) {
+	tests := map[string]struct {
+		input *dhcpv4.DHCPv4
+		want  bool
+	}{
+		"fail invalid message type": {input: &dhcpv4.DHCPv4{Options: dhcpv4.OptionsFromList(dhcpv4.OptMessageType(dhcpv4.MessageTypeInform))}, want: false},
+		"fail no opt60":             {input: &dhcpv4.DHCPv4{Options: dhcpv4.OptionsFromList(dhcpv4.OptMessageType(dhcpv4.MessageTypeDiscover))}, want: false},
+		"fail bad opt60": {input: &dhcpv4.DHCPv4{Options: dhcpv4.OptionsFromList(
+			dhcpv4.OptMessageType(dhcpv4.MessageTypeDiscover),
+			dhcpv4.OptClassIdentifier("BadClient"),
+		)}, want: false},
+		"fail no opt93": {input: &dhcpv4.DHCPv4{Options: dhcpv4.OptionsFromList(
+			dhcpv4.OptMessageType(dhcpv4.MessageTypeDiscover),
+			dhcpv4.OptClassIdentifier("HTTPClient:Arch:xxxxx:UNDI:yyyzzz"),
+		)}, want: false},
+		"fail no opt94": {input: &dhcpv4.DHCPv4{Options: dhcpv4.OptionsFromList(
+			dhcpv4.OptMessageType(dhcpv4.MessageTypeDiscover),
+			dhcpv4.OptClassIdentifier("HTTPClient:Arch:xxxxx:UNDI:yyyzzz"),
+			dhcpv4.OptClientArch(iana.EFI_ARM64_HTTP),
+		)}, want: false},
+		"fail invalid opt97[0] != 0": {input: &dhcpv4.DHCPv4{Options: dhcpv4.OptionsFromList(
+			dhcpv4.OptMessageType(dhcpv4.MessageTypeDiscover),
+			dhcpv4.OptClassIdentifier("HTTPClient:Arch:xxxxx:UNDI:yyyzzz"),
+			dhcpv4.OptClientArch(iana.EFI_ARM64_HTTP),
+			dhcpv4.OptGeneric(dhcpv4.OptionClientNetworkInterfaceIdentifier, []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}),
+			dhcpv4.OptGeneric(dhcpv4.OptionClientMachineIdentifier, []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x00, 0x02, 0x03, 0x04, 0x05, 0x06, 0x00, 0x02, 0x03, 0x04, 0x05}),
+		)}, want: false},
+		"fail invalid len(opt97)": {input: &dhcpv4.DHCPv4{Options: dhcpv4.OptionsFromList(
+			dhcpv4.OptMessageType(dhcpv4.MessageTypeDiscover),
+			dhcpv4.OptClassIdentifier("HTTPClient:Arch:xxxxx:UNDI:yyyzzz"),
+			dhcpv4.OptClientArch(iana.EFI_ARM64_HTTP),
+			dhcpv4.OptGeneric(dhcpv4.OptionClientNetworkInterfaceIdentifier, []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}),
+			dhcpv4.OptGeneric(dhcpv4.OptionClientMachineIdentifier, []byte{0x01, 0x02}),
+		)}, want: false},
+		"success len(opt97) == 0": {input: &dhcpv4.DHCPv4{Options: dhcpv4.OptionsFromList(
+			dhcpv4.OptMessageType(dhcpv4.MessageTypeDiscover),
+			dhcpv4.OptClassIdentifier("HTTPClient:Arch:xxxxx:UNDI:yyyzzz"),
+			dhcpv4.OptClientArch(iana.EFI_ARM64_HTTP),
+			dhcpv4.OptGeneric(dhcpv4.OptionClientNetworkInterfaceIdentifier, []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}),
+			dhcpv4.OptGeneric(dhcpv4.OptionClientMachineIdentifier, []byte{}),
+		)}, want: true},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			s := &Server{}
+			if s.isNetbootClient(tt.input) != tt.want {
+				t.Errorf("isNetbootClient() = %v, want %v", !tt.want, tt.want)
 			}
 		})
 	}

@@ -21,6 +21,7 @@ type UserClass string
 type clientType string
 
 const (
+	pxeClient  clientType = "PXEClient"
 	httpClient clientType = "HTTPClient"
 )
 
