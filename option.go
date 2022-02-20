@@ -75,18 +75,36 @@ func (c UserClass) String() string {
 // m is the DHCP request from a client. d is the data to use to create the DHCP packet modifiers.
 // This is most likely the place where we would have any business logic for determining DHCP option setting.
 func (s *Server) setDHCPOpts(_ context.Context, _ *dhcpv4.DHCPv4, d *data.Dhcp) []dhcpv4.Modifier {
-	return []dhcpv4.Modifier{
-		dhcpv4.WithDNS(d.NameServers...),
-		dhcpv4.WithDomainSearchList(d.DomainSearch...),
-		dhcpv4.WithOption(dhcpv4.OptNTPServers(d.NTPServers...)),
-		dhcpv4.WithGeneric(dhcpv4.OptionBroadcastAddress, d.BroadcastAddress.IPAddr().IP),
-		dhcpv4.WithGeneric(dhcpv4.OptionDomainName, []byte(d.DomainName)),
-		dhcpv4.WithGeneric(dhcpv4.OptionHostName, []byte(d.Hostname)),
-		dhcpv4.WithNetmask(d.SubnetMask),
-		dhcpv4.WithRouter(d.DefaultGateway.IPAddr().IP),
+	mods := []dhcpv4.Modifier{
 		dhcpv4.WithLeaseTime(d.LeaseTime),
 		dhcpv4.WithYourIP(d.IPAddress.IPAddr().IP),
 	}
+	if len(d.NameServers) > 0 {
+		mods = append(mods, dhcpv4.WithDNS(d.NameServers...))
+	}
+	if len(d.DomainSearch) > 0 {
+		mods = append(mods, dhcpv4.WithDomainSearchList(d.DomainSearch...))
+	}
+	if len(d.NTPServers) > 0 {
+		mods = append(mods, dhcpv4.WithOption(dhcpv4.OptNTPServers(d.NTPServers...)))
+	}
+	if !d.BroadcastAddress.IsZero() {
+		mods = append(mods, dhcpv4.WithGeneric(dhcpv4.OptionBroadcastAddress, d.BroadcastAddress.IPAddr().IP))
+	}
+	if d.DomainName != "" {
+		mods = append(mods, dhcpv4.WithGeneric(dhcpv4.OptionDomainName, []byte(d.DomainName)))
+	}
+	if d.Hostname != "" {
+		mods = append(mods, dhcpv4.WithGeneric(dhcpv4.OptionHostName, []byte(d.Hostname)))
+	}
+	if len(d.SubnetMask) > 0 {
+		mods = append(mods, dhcpv4.WithNetmask(d.SubnetMask))
+	}
+	if !d.DefaultGateway.IsZero() {
+		mods = append(mods, dhcpv4.WithRouter(d.DefaultGateway.IPAddr().IP))
+	}
+
+	return mods
 }
 
 // setNetworkBootOpts purpose is to sets 3 or 4 values. 2 DHCP headers, option 43 and optionally option (60).
