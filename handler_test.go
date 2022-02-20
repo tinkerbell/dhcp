@@ -490,7 +490,7 @@ func TestIsNetbootClient(t *testing.T) {
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			s := &Server{}
+			s := &Server{Log: logr.Discard()}
 			if s.isNetbootClient(tt.input) != tt.want {
 				t.Errorf("isNetbootClient() = %v, want %v", !tt.want, tt.want)
 			}

@@ -133,6 +133,7 @@ func (s *Server) handleRequest(ctx context.Context, tracer trace.Tracer, m *dhcp
 	mods = append(mods, s.setDHCPOpts(ctx, m, d)...)
 
 	if s.NetbootEnabled && s.isNetbootClient(m) {
+		log.Info("netboot client")
 		mods = append(mods, s.setNetworkBootOpts(ctx, m, n))
 	}
 	reply, err := dhcpv4.NewReplyFromRequest(m, mods...)
@@ -164,26 +165,31 @@ func (s *Server) handleRelease(_ context.Context, m *dhcpv4.DHCPv4) {
 func (s *Server) isNetbootClient(pkt *dhcpv4.DHCPv4) bool {
 	// only response to DISCOVER and REQUEST packets
 	if pkt.MessageType() != dhcpv4.MessageTypeDiscover && pkt.MessageType() != dhcpv4.MessageTypeRequest {
-		return false // ErrInvalidMsgType{Invalid: pkt.MessageType()}
+		s.Log.Info("not a netboot client", "reason", "message type must be either Discover or Request", "mac", pkt.ClientHWAddr.String(), "message type", pkt.MessageType())
+		return false
 	}
 	// option 60 must be set
 	if !pkt.Options.Has(dhcpv4.OptionClassIdentifier) {
-		return false // ErrOpt60Missing
+		s.Log.Info("not a netboot client", "reason", "option 60 not set", "mac", pkt.ClientHWAddr.String())
+		return false
 	}
 	// option 60 must start with PXEClient or HTTPClient
 	opt60 := pkt.GetOneOption(dhcpv4.OptionClassIdentifier)
 	if !strings.HasPrefix(string(opt60), string(pxeClient)) && !strings.HasPrefix(string(opt60), string(httpClient)) {
-		return false // ErrInvalidOption60{Opt60: string(opt60)}
+		s.Log.Info("not a netboot client", "reason", "option 60 not PXEClient or HTTPClient", "mac", pkt.ClientHWAddr.String(), "option 60", string(opt60))
+		return false
 	}
 
 	// option 93 must be set
 	if !pkt.Options.Has(dhcpv4.OptionClientSystemArchitectureType) {
-		return false // ErrOpt93Missing
+		s.Log.Info("not a netboot client", "reason", "option 93 not set", "mac", pkt.ClientHWAddr.String())
+		return false
 	}
 
 	// option 94 must be set
 	if !pkt.Options.Has(dhcpv4.OptionClientNetworkInterfaceIdentifier) {
-		return false // ErrOpt94Missing
+		s.Log.Info("not a netboot client", "reason", "option 94 not set", "mac", pkt.ClientHWAddr.String())
+		return false
 	}
 
 	// option 97 must be have correct length or not be set
@@ -197,10 +203,12 @@ func (s *Server) isNetbootClient(pkt *dhcpv4.DHCPv4) bool {
 		// well accept these buggy ROMs.
 	case 17:
 		if guid[0] != 0 {
-			return false // ErrOpt97LeadingByteError
+			s.Log.Info("not a netboot client", "reason", "option 97 does not start with 0", "mac", pkt.ClientHWAddr.String(), "option 97", string(guid))
+			return false
 		}
 	default:
-		return false // ErrOpt97WrongSize
+		s.Log.Info("not a netboot client", "reason", "option 97 has invalid length (0 or 17)", "mac", pkt.ClientHWAddr.String(), "option 97", string(guid))
+		return false
 	}
 	return true
 }
