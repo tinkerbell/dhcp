@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net"
 	"net/url"
-	"path/filepath"
 	"strings"
 
 	"github.com/insomniacslk/dhcp/dhcpv4"
@@ -139,13 +138,12 @@ func (s *Server) setNetworkBootOpts(ctx context.Context, m *dhcpv4.DHCPv4, n *da
 				s.Log.Error(fmt.Errorf("unable to find bootfile for arch"), "arch", a)
 				return
 			}
-			mac := m.ClientHWAddr
 			uClass := UserClass(string(m.GetOneOption(dhcpv4.OptionUserClassInformation)))
 			ipxeScript := s.IPXEScriptURL
 			if n.IpxeScriptURL != nil {
 				ipxeScript = n.IpxeScriptURL
 			}
-			d.BootFileName, d.ServerIPAddr = s.bootfileAndNextServer(ctx, mac, uClass, opt60, bin, s.IPXEBinServerTFTP, s.IPXEBinServerHTTP, ipxeScript)
+			d.BootFileName, d.ServerIPAddr = s.bootfileAndNextServer(ctx, uClass, opt60, bin, s.IPXEBinServerTFTP, s.IPXEBinServerHTTP, ipxeScript)
 			pxe := dhcpv4.Options{ // FYI, these are suboptions of option43. ref: https://datatracker.ietf.org/doc/html/rfc2132#section-8.4
 				// PXE Boot Server Discovery Control - bypass, just boot from filename.
 				6:  []byte{8},
@@ -161,7 +159,7 @@ func (s *Server) setNetworkBootOpts(ctx context.Context, m *dhcpv4.DHCPv4, n *da
 // bootfileAndNextServer returns the bootfile (string) and next server (net.IP).
 // input arguments `tftp`, `ipxe` and `iscript` use non string types so as to attempt to be more clear about the expectation around what is wanted for these values.
 // It also helps us avoid having to validate a string in multiple ways.
-func (s *Server) bootfileAndNextServer(ctx context.Context, mac net.HardwareAddr, uClass UserClass, opt60, bin string, tftp netaddr.IPPort, ipxe, iscript *url.URL) (string, net.IP) {
+func (s *Server) bootfileAndNextServer(ctx context.Context, uClass UserClass, opt60, bin string, tftp netaddr.IPPort, ipxe, iscript *url.URL) (string, net.IP) {
 	var nextServer net.IP
 	var bootfile string
 	if s.OTELEnabled {
@@ -179,7 +177,7 @@ func (s *Server) bootfileAndNextServer(ctx context.Context, mac net.HardwareAddr
 			bootfile = iscript.String()
 		}
 	case clientType(opt60) == httpClient: // Check the client type from option 60.
-		bootfile = fmt.Sprintf("%s/%s/%s", ipxe, mac.String(), bin)
+		bootfile = fmt.Sprintf("%s/%s", ipxe, bin)
 		ns := net.ParseIP(ipxe.Host)
 		if ns == nil {
 			s.Log.Error(fmt.Errorf("unable to parse ipxe host"), "ipxe", ipxe.Host)
@@ -187,10 +185,10 @@ func (s *Server) bootfileAndNextServer(ctx context.Context, mac net.HardwareAddr
 		}
 		nextServer = ns
 	case uClass == IPXE: // if the "iPXE" user class is found it means we aren't in our custom version of ipxe, but because of the option 43 we're setting we need to give a full tftp url from which to boot.
-		bootfile = fmt.Sprintf("tftp://%v/%v/%v", tftp.String(), mac.String(), bin)
+		bootfile = fmt.Sprintf("tftp://%v/%v", tftp.String(), bin)
 		nextServer = tftp.UDPAddr().IP
 	default:
-		bootfile = filepath.Join(mac.String(), bin)
+		bootfile = bin
 		nextServer = tftp.UDPAddr().IP
 	}
 
