@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net"
 	"net/url"
-	"path/filepath"
 	"strings"
 
 	"github.com/insomniacslk/dhcp/dhcpv4"
@@ -108,6 +107,8 @@ func (s *Server) setDHCPOpts(_ context.Context, _ *dhcpv4.DHCPv4, d *data.Dhcp) 
 }
 
 // setNetworkBootOpts purpose is to sets 3 or 4 values. 2 DHCP headers, option 43 and optionally option (60).
+// These headers and options are returned as a dhcvp4.Modifier that can be used to modify a dhcp response.
+// github.com/insomniacslk/dhcp uses this method to simplify packet manipulation.
 //
 // DHCP Headers (https://datatracker.ietf.org/doc/html/rfc2131#section-2)
 // 'siaddr': IP address of next bootstrap server. represented below as `.ServerIPAddr`.
@@ -116,12 +117,12 @@ func (s *Server) setDHCPOpts(_ context.Context, _ *dhcpv4.DHCPv4, d *data.Dhcp) 
 // DHCP option
 // option 60: Class Identifier. https://www.rfc-editor.org/rfc/rfc2132.html#section-9.13
 // option 60 is set if the client's option 60 (Class Identifier) starts with HTTPClient.
-func (s *Server) setNetworkBootOpts(ctx context.Context, m *dhcpv4.DHCPv4, n *data.Netboot) func(d *dhcpv4.DHCPv4) {
+func (s *Server) setNetworkBootOpts(ctx context.Context, m *dhcpv4.DHCPv4, n *data.Netboot) dhcpv4.Modifier {
 	// m is a received DHCPv4 packet.
 	// d is the reply packet we are building.
 	withNetboot := func(d *dhcpv4.DHCPv4) {
 		var opt60 string
-		// if the client sends opt 60 with HTTPClient then we need to response with opt 60
+		// if the client sends opt 60 with HTTPClient then we need to respond with opt 60
 		if val := m.Options.Get(dhcpv4.OptionClassIdentifier); val != nil {
 			if strings.HasPrefix(string(val), httpClient.String()) {
 				d.UpdateOption(dhcpv4.OptGeneric(dhcpv4.OptionClassIdentifier, []byte(httpClient)))
@@ -137,16 +138,15 @@ func (s *Server) setNetworkBootOpts(ctx context.Context, m *dhcpv4.DHCPv4, n *da
 				s.Log.Error(fmt.Errorf("unable to find bootfile for arch"), "arch", a)
 				return
 			}
-			mac := m.ClientHWAddr
 			uClass := UserClass(string(m.GetOneOption(dhcpv4.OptionUserClassInformation)))
 			ipxeScript := s.IPXEScriptURL
 			if n.IpxeScriptURL != nil {
 				ipxeScript = n.IpxeScriptURL
 			}
-			d.BootFileName, d.ServerIPAddr = s.bootfileAndNextServer(ctx, mac, uClass, opt60, bin, s.IPXEBinServerTFTP, s.IPXEBinServerHTTP, ipxeScript)
-			pxe := dhcpv4.Options{
+			d.BootFileName, d.ServerIPAddr = s.bootfileAndNextServer(ctx, uClass, opt60, bin, s.IPXEBinServerTFTP, s.IPXEBinServerHTTP, ipxeScript)
+			pxe := dhcpv4.Options{ // FYI, these are suboptions of option43. ref: https://datatracker.ietf.org/doc/html/rfc2132#section-8.4
 				// PXE Boot Server Discovery Control - bypass, just boot from filename.
-				6:  []byte{8}, // or []byte{8}
+				6:  []byte{8},
 				69: binaryTpFromContext(ctx),
 			}
 			d.UpdateOption(dhcpv4.OptGeneric(dhcpv4.OptionVendorSpecificInformation, pxe.ToBytes()))
@@ -157,7 +157,9 @@ func (s *Server) setNetworkBootOpts(ctx context.Context, m *dhcpv4.DHCPv4, n *da
 }
 
 // bootfileAndNextServer returns the bootfile (string) and next server (net.IP).
-func (s *Server) bootfileAndNextServer(ctx context.Context, mac net.HardwareAddr, uClass UserClass, opt60, bin string, tftp netaddr.IPPort, ipxe, iscript *url.URL) (string, net.IP) {
+// input arguments `tftp`, `ipxe` and `iscript` use non string types so as to attempt to be more clear about the expectation around what is wanted for these values.
+// It also helps us avoid having to validate a string in multiple ways.
+func (s *Server) bootfileAndNextServer(ctx context.Context, uClass UserClass, opt60, bin string, tftp netaddr.IPPort, ipxe, iscript *url.URL) (string, net.IP) {
 	var nextServer net.IP
 	var bootfile string
 	if s.OTELEnabled {
@@ -175,7 +177,7 @@ func (s *Server) bootfileAndNextServer(ctx context.Context, mac net.HardwareAddr
 			bootfile = iscript.String()
 		}
 	case clientType(opt60) == httpClient: // Check the client type from option 60.
-		bootfile = fmt.Sprintf("%s/%s/%s", ipxe, mac.String(), bin)
+		bootfile = fmt.Sprintf("%s/%s", ipxe, bin)
 		ns := net.ParseIP(ipxe.Host)
 		if ns == nil {
 			s.Log.Error(fmt.Errorf("unable to parse ipxe host"), "ipxe", ipxe.Host)
@@ -183,10 +185,10 @@ func (s *Server) bootfileAndNextServer(ctx context.Context, mac net.HardwareAddr
 		}
 		nextServer = ns
 	case uClass == IPXE: // if the "iPXE" user class is found it means we aren't in our custom version of ipxe, but because of the option 43 we're setting we need to give a full tftp url from which to boot.
-		bootfile = fmt.Sprintf("tftp://%v/%v/%v", tftp.String(), mac.String(), bin)
+		bootfile = fmt.Sprintf("tftp://%v/%v", tftp.String(), bin)
 		nextServer = tftp.UDPAddr().IP
 	default:
-		bootfile = filepath.Join(mac.String(), bin)
+		bootfile = bin
 		nextServer = tftp.UDPAddr().IP
 	}
 
@@ -221,7 +223,7 @@ func arch(d *dhcpv4.DHCPv4) iana.Arch {
 
 // binaryTpFromContext extracts the binary trace id, span id, and trace flags
 // from the running span in ctx and returns a 26 byte []byte with the traceparent
-// encoded and ready to pass in opt43.
+// encoded and ready to pass into a suboption (most likely 69) of opt43.
 func binaryTpFromContext(ctx context.Context) []byte {
 	sc := trace.SpanContextFromContext(ctx)
 	tpBytes := make([]byte, 0, 26)

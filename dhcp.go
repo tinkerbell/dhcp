@@ -36,7 +36,7 @@ type Server struct {
 	// The IP is used to find the network interface to listen on for DHCP requests.
 	Listener netaddr.IPPort
 
-	// IPAddr is the IP address to use in DHCP requests.
+	// IPAddr is the IP address to use in DHCP responses.
 	// Option 54 and the sname DHCP header.
 	// This could be a load balancer IP address or an ingress IP address or a local IP address.
 	IPAddr netaddr.IP
