@@ -12,7 +12,6 @@ import (
 	"github.com/imdario/mergo"
 	"github.com/insomniacslk/dhcp/dhcpv4/server4"
 	"github.com/tinkerbell/dhcp/data"
-	"golang.org/x/sync/errgroup"
 	"inet.af/netaddr"
 )
 
@@ -69,7 +68,6 @@ type Server struct {
 // Override the defaults by setting the Server struct fields.
 func (s *Server) ListenAndServe(ctx context.Context) error {
 	defaults := &Server{
-		ctx:      ctx,
 		Log:      logr.Discard(),
 		Listener: netaddr.IPPortFrom(netaddr.IPv4(0, 0, 0, 0), 67),
 		IPAddr:   defaultIP(),
@@ -93,22 +91,18 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 		return err
 	}
 
-	g, ctx := errgroup.WithContext(ctx)
-	g.Go(func() error {
-		s.Log.Info("starting DHCP server", "port", s.Listener.Port(), "interface", s.IPAddr.String())
-		return srv.Serve()
-	})
+	go func() {
+		<-s.ctx.Done()
+		_ = srv.Close()
+	}()
+	s.Log.Info("starting DHCP server", "port", s.Listener.Port(), "interface", s.IPAddr.String())
 
-	<-ctx.Done()
-	_ = srv.Close()
-
-	return g.Wait()
+	return srv.Serve()
 }
 
 // Serve run the DHCP server using the given PacketConn.
 func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 	defaults := &Server{
-		ctx:      ctx,
 		Log:      logr.Discard(),
 		Listener: netaddr.IPPortFrom(netaddr.IPv4(0, 0, 0, 0), 67),
 		IPAddr:   defaultIP(),
@@ -127,15 +121,13 @@ func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
 		return err
 	}
 
-	g, ctx := errgroup.WithContext(ctx)
-	g.Go(func() error {
-		return srv.Serve()
-	})
+	go func() {
+		<-s.ctx.Done()
+		_ = srv.Close()
+	}()
+	s.Log.Info("starting DHCP server", "port", s.Listener.Port(), "interface", s.IPAddr.String())
 
-	<-ctx.Done()
-	_ = srv.Close()
-
-	return g.Wait()
+	return srv.Serve()
 }
 
 // getInterfaceByIP returns the interface with the given IP address or an empty string.
@@ -201,6 +193,7 @@ func (s *Server) Transformer(typ reflect.Type) func(dst, src reflect.Value) erro
 			return nil
 		}
 	}
+
 	return nil
 }
 

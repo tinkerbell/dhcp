@@ -29,7 +29,7 @@ func (s *Server) handleFunc(conn net.PacketConn, peer net.Addr, m *dhcpv4.DHCPv4
 	log := s.Log.WithValues("mac", m.ClientHWAddr.String())
 	log.Info("received DHCP packet", "type", m.MessageType().String())
 	tracer := otel.Tracer(tracerName)
-	ctx, span := tracer.Start(context.Background(), fmt.Sprintf("DHCP Packet Received: %v", m.MessageType().String()))
+	ctx, span := tracer.Start(s.ctx, fmt.Sprintf("DHCP Packet Received: %v", m.MessageType().String()))
 	defer span.End()
 
 	var reply []byte

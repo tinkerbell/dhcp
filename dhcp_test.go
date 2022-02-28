@@ -5,11 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"sync"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
-	"golang.org/x/sync/errgroup"
 	"inet.af/netaddr"
 )
 
@@ -32,15 +31,11 @@ func TestListenAndServe(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			got := &Server{
 				Listener: netaddr.IPPortFrom(netaddr.IPv4(127, 0, 0, 1), tt.port),
+				Backend:  &noop{},
 			}
 			ctx, cn := context.WithCancel(context.Background())
-
-			g, ctx := errgroup.WithContext(ctx)
-			g.Go(func() error {
-				return got.ListenAndServe(ctx)
-			})
-			cn()
-			err := g.Wait()
+			go time.AfterFunc(time.Millisecond*100, cn)
+			err := got.ListenAndServe(ctx)
 
 			switch {
 			case tt.wantErr == nil && err != nil:
@@ -58,8 +53,7 @@ func TestListenAndServe(t *testing.T) {
 
 func TestServe(t *testing.T) {
 	tests := map[string]struct {
-		wantErr    error
-		wantUDPErr bool
+		wantErr error
 	}{
 		"success": {
 			wantErr: &net.OpError{
@@ -72,30 +66,18 @@ func TestServe(t *testing.T) {
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			got := &Server{}
-			ctx, cn := context.WithCancel(context.Background())
-
-			var uconn net.PacketConn
-			var err error
-			if !tt.wantUDPErr {
-				a, err := net.ResolveUDPAddr("udp", "127.0.0.1:6767")
-				if err != nil {
-					t.Fatal(err)
-				}
-				uconn, err = net.ListenUDP("udp", a)
-				if err != nil {
-					t.Fatal(err)
-				}
+			a, err := net.ResolveUDPAddr("udp", "127.0.0.1:6767")
+			if err != nil {
+				t.Fatal(err)
 			}
-
-			var wg sync.WaitGroup
-			wg.Add(1)
-			go func() {
-				err = got.Serve(ctx, uconn)
-				wg.Done()
-			}()
-			cn()
-			wg.Wait()
+			uconn, err := net.ListenUDP("udp", a)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx, cn := context.WithCancel(context.Background())
+			go time.AfterFunc(time.Millisecond*100, cn)
+			got := &Server{}
+			err = got.Serve(ctx, uconn)
 
 			switch {
 			case tt.wantErr == nil && err != nil:
