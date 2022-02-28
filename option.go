@@ -74,7 +74,7 @@ func (c UserClass) String() string {
 // setDHCPOpts takes a client dhcp packet and data (typically from a backend) and creates a slice of DHCP packet modifiers.
 // m is the DHCP request from a client. d is the data to use to create the DHCP packet modifiers.
 // This is most likely the place where we would have any business logic for determining DHCP option setting.
-func (s *Server) setDHCPOpts(_ context.Context, _ *dhcpv4.DHCPv4, d *data.Dhcp) []dhcpv4.Modifier {
+func (s *Server) setDHCPOpts(_ context.Context, _ *dhcpv4.DHCPv4, d *data.DHCP) []dhcpv4.Modifier {
 	mods := []dhcpv4.Modifier{
 		dhcpv4.WithLeaseTime(d.LeaseTime),
 		dhcpv4.WithYourIP(d.IPAddress.IPAddr().IP),
