@@ -224,7 +224,7 @@ func (tt *testData) helper(t *testing.T, l logr.Logger) (*Watcher, string) {
 
 func TestTranslate(t *testing.T) {
 	input := dhcp{
-		MacAddress:       []byte{0x00, 0x01, 0x02, 0x03, 0x04, 0x05},
+		MACAddress:       []byte{0x00, 0x01, 0x02, 0x03, 0x04, 0x05},
 		IPAddress:        "192.168.2.150",
 		SubnetMask:       "255.255.255.0",
 		DefaultGateway:   "192.168.2.1",
@@ -241,7 +241,7 @@ func TestTranslate(t *testing.T) {
 		},
 	}
 	wantDHCP := &data.DHCP{
-		MacAddress:       []byte{0x00, 0x01, 0x02, 0x03, 0x04, 0x05},
+		MACAddress:       []byte{0x00, 0x01, 0x02, 0x03, 0x04, 0x05},
 		IPAddress:        netaddr.IPv4(192, 168, 2, 150),
 		SubnetMask:       net.IPv4Mask(255, 255, 255, 0),
 		DefaultGateway:   netaddr.IPv4(192, 168, 2, 1),
@@ -255,7 +255,7 @@ func TestTranslate(t *testing.T) {
 	}
 	wantNetboot := &data.Netboot{
 		AllowNetboot:  true,
-		IpxeScriptURL: &url.URL{Scheme: "http", Host: "boot.netboot.xyz"},
+		IPXEScriptURL: &url.URL{Scheme: "http", Host: "boot.netboot.xyz"},
 	}
 	w := &Watcher{Log: logr.Discard()}
 	gotDHCP, gotNetboot, err := w.translate(input)

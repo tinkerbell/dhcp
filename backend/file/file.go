@@ -15,8 +15,12 @@ import (
 	"github.com/ghodss/yaml"
 	"github.com/go-logr/logr"
 	"github.com/tinkerbell/dhcp/data"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/codes"
 	"inet.af/netaddr"
 )
+
+const tracerName = "github.com/tinkerbell/dhcp"
 
 // Errors used by the file watcher.
 var (
@@ -27,6 +31,28 @@ var (
 	errParseSubnet    = fmt.Errorf("failed to parse subnet mask from File")
 	errParseURL       = fmt.Errorf("failed to parse URL")
 )
+
+// netboot is the structure for the data expected in a file.
+type netboot struct {
+	AllowPXE      bool   `yaml:"allowPxe"`      // If true, the client will be provided netboot options in the DHCP offer/ack.
+	IPXEScriptURL string `yaml:"ipxeScriptUrl"` // Overrides default value of that is passed into DHCP on startup.
+}
+
+// dhcp is the structure for the data expected in a file.
+type dhcp struct {
+	MACAddress       net.HardwareAddr // The MAC address of the client.
+	IPAddress        string           `yaml:"ipAddress"`        // yiaddr DHCP header.
+	SubnetMask       string           `yaml:"subnetMask"`       // DHCP option 1.
+	DefaultGateway   string           `yaml:"defaultGateway"`   // DHCP option 3.
+	NameServers      []string         `yaml:"nameServers"`      // DHCP option 6.
+	Hostname         string           `yaml:"hostname"`         // DHCP option 12.
+	DomainName       string           `yaml:"domainName"`       // DHCP option 15.
+	BroadcastAddress string           `yaml:"broadcastAddress"` // DHCP option 28.
+	NTPServers       []string         `yaml:"ntpServers"`       // DHCP option 42.
+	LeaseTime        int              `yaml:"leaseTime"`        // DHCP option 51.
+	DomainSearch     []string         `yaml:"domainSearch"`     // DHCP option 119.
+	Netboot          netboot          `yaml:"netboot"`
+}
 
 // Watcher represents the backend for watching a file for changes and updating the in memory DHCP data.
 type Watcher struct {
@@ -70,24 +96,45 @@ func NewWatcher(l logr.Logger, f string) (*Watcher, error) {
 
 // Read is the implementation of the Backend interface.
 // It reads a given file from the in memory data (w.data).
-func (w *Watcher) Read(_ context.Context, mac net.HardwareAddr) (*data.DHCP, *data.Netboot, error) {
+func (w *Watcher) Read(ctx context.Context, mac net.HardwareAddr) (*data.DHCP, *data.Netboot, error) {
+	tracer := otel.Tracer(tracerName)
+	_, span := tracer.Start(ctx, "backend.file.Read")
+	defer span.End()
+
 	// get data from file, translate it, then pass it into setDHCPOpts and setNetworkBootOpts
 	w.dataMu.RLock()
 	d := w.data
 	w.dataMu.RUnlock()
 	r := make(map[string]dhcp)
 	if err := yaml.Unmarshal(d, &r); err != nil {
-		return nil, nil, fmt.Errorf("%v: %w", err, errFileFormat)
+		err := fmt.Errorf("%v: %w", err, errFileFormat)
+		w.Log.Error(err, "failed to unmarshal file data")
+		span.SetStatus(codes.Error, err.Error())
+
+		return nil, nil, err
 	}
 	for k, v := range r {
 		if strings.EqualFold(k, mac.String()) {
 			// found a record for this mac address
-			v.MacAddress = mac
-			return w.translate(v)
+			v.MACAddress = mac
+			d, n, err := w.translate(v)
+			if err != nil {
+				span.SetStatus(codes.Error, err.Error())
+
+				return nil, nil, err
+			}
+			span.SetAttributes(d.EncodeToAttributes()...)
+			span.SetAttributes(n.EncodeToAttributes()...)
+			span.SetStatus(codes.Ok, "")
+
+			return d, n, nil
 		}
 	}
 
-	return nil, nil, fmt.Errorf("%w: %s", errRecordNotFound, mac.String())
+	err := fmt.Errorf("%w: %s", errRecordNotFound, mac.String())
+	span.SetStatus(codes.Error, err.Error())
+
+	return nil, nil, err
 }
 
 // Start starts watching a file for changes and updates the in memory data (w.data) on changes.
@@ -129,7 +176,7 @@ func (w *Watcher) translate(r dhcp) (*data.DHCP, *data.Netboot, error) {
 	d := new(data.DHCP)
 	n := new(data.Netboot)
 
-	d.MacAddress = r.MacAddress
+	d.MACAddress = r.MACAddress
 	// ip address, required
 	ip, err := netaddr.ParseIP(r.IPAddress)
 	if err != nil {
@@ -185,42 +232,22 @@ func (w *Watcher) translate(r dhcp) (*data.DHCP, *data.Netboot, error) {
 	}
 
 	// lease time
-	// TODO(jacobweinstock): write some validations. > 0, etc.
 	d.LeaseTime = uint32(r.LeaseTime)
 
 	// domain search
 	d.DomainSearch = r.DomainSearch
 
+	// allow machine to netboot
 	n.AllowNetboot = r.Netboot.AllowPXE
+
+	// ipxe script url is optional but if provided, it must be a valid url
 	if r.Netboot.IPXEScriptURL != "" {
 		u, err := url.Parse(r.Netboot.IPXEScriptURL)
 		if err != nil {
 			return nil, nil, fmt.Errorf("%v: %w", err, errParseURL)
 		}
-		n.IpxeScriptURL = u
+		n.IPXEScriptURL = u
 	}
 
 	return d, n, nil
-}
-
-// netboot is the structure for the data expected in a file.
-type netboot struct {
-	AllowPXE      bool   `yaml:"allowPxe"`      // If true, the client will be provided netboot options in the DHCP offer/ack.
-	IPXEScriptURL string `yaml:"ipxeScriptUrl"` // Overrides default value of that is passed into DHCP on startup.
-}
-
-// dhcp is the structure for the data expected in a file.
-type dhcp struct {
-	MacAddress       net.HardwareAddr // The MAC address of the client.
-	IPAddress        string           `yaml:"ipAddress"`        // yiaddr DHCP header.
-	SubnetMask       string           `yaml:"subnetMask"`       // DHCP option 1.
-	DefaultGateway   string           `yaml:"defaultGateway"`   // DHCP option 3.
-	NameServers      []string         `yaml:"nameServers"`      // DHCP option 6.
-	Hostname         string           `yaml:"hostname"`         // DHCP option 12.
-	DomainName       string           `yaml:"domainName"`       // DHCP option 15.
-	BroadcastAddress string           `yaml:"broadcastAddress"` // DHCP option 28.
-	NTPServers       []string         `yaml:"ntpServers"`       // DHCP option 42.
-	LeaseTime        int              `yaml:"leaseRime"`        // DHCP option 51.
-	DomainSearch     []string         `yaml:"domainSearch"`     // DHCP option 119.
-	Netboot          netboot          `yaml:"netboot"`
 }
