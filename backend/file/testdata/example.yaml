@@ -75,3 +75,6 @@ b4:96:91:6f:33:d0:
   netboot:
     allowPxe: true
     ipxeScriptUrl: 'https://boot.netboot.xyz'
+08:00:27:29:4E:68: # bad data
+  ipAddress: '3'
+  subnetMask: '255.255.255.0'

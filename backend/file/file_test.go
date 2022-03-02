@@ -299,9 +299,10 @@ func TestRead(t *testing.T) {
 		badData bool
 		wantErr error
 	}{
-		"no record found":   {mac: net.HardwareAddr{0x00, 0x01, 0x02, 0x03, 0x04, 0x05}, wantErr: errRecordNotFound},
-		"record found":      {mac: net.HardwareAddr{0x08, 0x00, 0x27, 0x29, 0x4e, 0x67}, wantErr: nil},
-		"fail parsing file": {badData: true, wantErr: errFileFormat},
+		"no record found":        {mac: net.HardwareAddr{0x00, 0x01, 0x02, 0x03, 0x04, 0x05}, wantErr: errRecordNotFound},
+		"record found":           {mac: net.HardwareAddr{0x08, 0x00, 0x27, 0x29, 0x4e, 0x67}, wantErr: nil},
+		"fail error translating": {mac: net.HardwareAddr{0x08, 0x00, 0x27, 0x29, 0x4e, 0x68}, wantErr: errParseIP},
+		"fail parsing file":      {badData: true, wantErr: errFileFormat},
 	}
 
 	for name, tt := range tests {
