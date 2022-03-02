@@ -79,6 +79,7 @@ func (s *Server) handleFunc(conn net.PacketConn, peer net.Addr, m *dhcpv4.DHCPv4
 	}
 
 	log.Info("sent DHCP response")
+	span.SetAttributes(encodeToAttributes(reply)...)
 	span.SetStatus(codes.Ok, "sent DHCP response")
 }
 
@@ -190,4 +191,66 @@ func (s *Server) isNetbootClient(pkt *dhcpv4.DHCPv4) bool {
 		return false
 	}
 	return true
+}
+
+// encodeToAttributes takes a DHCP packet in byte form and return opentelemetry key/value attributes.
+func encodeToAttributes(pkt []byte) []attribute.KeyValue {
+	d, err := dhcpv4.FromBytes(pkt)
+	if err != nil {
+		return []attribute.KeyValue{}
+	}
+
+	var ns []string
+	for _, e := range d.DNS() {
+		ns = append(ns, e.String())
+	}
+
+	var ntp []string
+	for _, e := range d.NTPServers() {
+		ntp = append(ntp, e.String())
+	}
+
+	var ds []string
+	if l := d.DomainSearch(); l != nil {
+		ds = append(ds, l.Labels...)
+	}
+
+	var routers []string
+	for _, e := range d.Router() {
+		routers = append(routers, e.String())
+	}
+
+	var sm string
+	if d.SubnetMask() != nil {
+		sm = net.IP(d.SubnetMask()).String()
+	}
+
+	// this is needed because dhcpv4.DHCPv4.Options don't get zero values like top level struct values do.
+	var ba string
+	if d.BroadcastAddress() != nil {
+		ba = d.BroadcastAddress().String()
+	}
+
+	var si string
+	if d.ServerIdentifier() != nil {
+		si = d.ServerIdentifier().String()
+	}
+
+	return []attribute.KeyValue{
+		attribute.String("DHCP.Header.yiaddr", d.YourIPAddr.String()),
+		attribute.String("DHCP.Header.siaddr", d.ServerIPAddr.String()),
+		attribute.String("DHCP.Header.chaddr", d.ClientHWAddr.String()),
+		attribute.String("DHCP.Header.file", d.BootFileName),
+		attribute.String("DHCP.Opt1.SubnetMask", sm),
+		attribute.String("DHCP.Opt3.DefaultGateway", strings.Join(routers, ",")),
+		attribute.String("DHCP.Opt6.NameServers", strings.Join(ns, ",")),
+		attribute.String("DHCP.Opt12.Hostname", d.HostName()),
+		attribute.String("DHCP.Opt15.DomainName", d.DomainName()),
+		attribute.String("DHCP.Opt28.BroadcastAddress", ba),
+		attribute.String("DHCP.Opt42.NTPServers", strings.Join(ntp, ",")),
+		attribute.Float64("DHCP.Opt51.LeaseTime", d.IPAddressLeaseTime(0).Seconds()),
+		attribute.String("DHCP.Opt53.MessageType", d.MessageType().String()),
+		attribute.String("DHCP.Opt54.ServerIdentifier", si),
+		attribute.String("DHCP.Opt119.DomainSearch", strings.Join(ds, ",")),
+	}
 }

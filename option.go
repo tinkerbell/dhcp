@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/equinix-labs/otel-init-go/otelhelpers"
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/insomniacslk/dhcp/iana"
 	"github.com/tinkerbell/dhcp/data"
@@ -164,11 +165,8 @@ func (s *Server) bootfileAndNextServer(ctx context.Context, uClass UserClass, op
 	var nextServer net.IP
 	var bootfile string
 	if s.OTELEnabled {
-		span := trace.SpanContextFromContext(ctx)
-		tID := span.TraceID().String()
-		sID := span.SpanID().String()
-		fID := span.TraceFlags().String()
-		bin = fmt.Sprintf("%s-00-%v-%v-%v", bin, tID, sID, fID)
+		tp := otelhelpers.TraceparentStringFromContext(ctx)
+		bin = fmt.Sprintf("%s-%v", bin, tp)
 	}
 	// If a machine is in an ipxe boot loop, it is likely to be that we aren't matching on IPXE or Tinkerbell userclass (option 77).
 	switch { // order matters here.

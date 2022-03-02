@@ -19,6 +19,7 @@ import (
 	"github.com/insomniacslk/dhcp/iana"
 	"github.com/insomniacslk/dhcp/rfc1035label"
 	"github.com/tinkerbell/dhcp/data"
+	"go.opentelemetry.io/otel/attribute"
 	"golang.org/x/net/nettest"
 	"inet.af/netaddr"
 )
@@ -471,6 +472,54 @@ func TestIsNetbootClient(t *testing.T) {
 			s := &Server{Log: logr.Discard()}
 			if s.isNetbootClient(tt.input) != tt.want {
 				t.Errorf("isNetbootClient() = %v, want %v", !tt.want, tt.want)
+			}
+		})
+	}
+}
+
+func TestEncodeToAttributes(t *testing.T) {
+	tests := map[string]struct {
+		input *dhcpv4.DHCPv4
+		want  []attribute.KeyValue
+	}{
+		"success": {
+			input: &dhcpv4.DHCPv4{Options: dhcpv4.OptionsFromList(dhcpv4.OptMessageType(dhcpv4.MessageTypeDiscover))},
+			want: []attribute.KeyValue{
+				attribute.String("DHCP.Header.yiaddr", "0.0.0.0"),
+				attribute.String("DHCP.Header.siaddr", "0.0.0.0"),
+				attribute.String("DHCP.Header.chaddr", ""),
+				attribute.String("DHCP.Header.file", ""),
+				attribute.String("DHCP.Opt1.SubnetMask", ""),
+				attribute.String("DHCP.Opt3.DefaultGateway", ""),
+				attribute.String("DHCP.Opt6.NameServers", ""),
+				attribute.String("DHCP.Opt12.Hostname", ""),
+				attribute.String("DHCP.Opt15.DomainName", ""),
+				attribute.String("DHCP.Opt28.BroadcastAddress", ""),
+				attribute.String("DHCP.Opt42.NTPServers", ""),
+				attribute.Float64("DHCP.Opt51.LeaseTime", 0),
+				attribute.String("DHCP.Opt53.MessageType", "DISCOVER"),
+				attribute.String("DHCP.Opt54.ServerIdentifier", ""),
+				attribute.String("DHCP.Opt119.DomainSearch", ""),
+			},
+		},
+		"fail to parse dhcp packet": {
+			input: nil,
+			want:  []attribute.KeyValue{},
+		},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			var pkt []byte
+			if tt.input != nil {
+				pkt = tt.input.ToBytes()
+			}
+			got := attribute.NewSet(encodeToAttributes(pkt)...)
+			want := attribute.NewSet(tt.want...)
+			enc := attribute.DefaultEncoder()
+			if diff := cmp.Diff(got.Encoded(enc), want.Encoded(enc)); diff != "" {
+				t.Log(got.Encoded(enc))
+				t.Log(want.Encoded(enc))
+				t.Fatal(diff)
 			}
 		})
 	}

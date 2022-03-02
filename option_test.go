@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/equinix-labs/otel-init-go/otelhelpers"
 	"github.com/go-logr/logr"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
@@ -15,6 +16,8 @@ import (
 	"github.com/insomniacslk/dhcp/iana"
 	"github.com/insomniacslk/dhcp/rfc1035label"
 	"github.com/tinkerbell/dhcp/data"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
 	"inet.af/netaddr"
 )
@@ -152,13 +155,13 @@ func TestBootfileAndNextServer(t *testing.T) {
 		iscript *url.URL
 	}
 	tests := map[string]struct {
-		server       Server
+		server       *Server
 		args         args
 		wantBootFile string
 		wantNextSrv  net.IP
 	}{
 		"success bootfile only": {
-			server: Server{Log: logr.Discard()},
+			server: &Server{Log: logr.Discard()},
 			args: args{
 				uClass:  Tinkerbell,
 				iscript: &url.URL{Scheme: "http", Host: "localhost:8080", Path: "/auto.ipxe"},
@@ -167,7 +170,7 @@ func TestBootfileAndNextServer(t *testing.T) {
 			wantNextSrv:  nil,
 		},
 		"success httpClient": {
-			server: Server{Log: logr.Discard()},
+			server: &Server{Log: logr.Discard()},
 			args: args{
 				mac:   net.HardwareAddr{0x01, 0x02, 0x03, 0x04, 0x05, 0x06},
 				opt60: httpClient.String(),
@@ -178,7 +181,7 @@ func TestBootfileAndNextServer(t *testing.T) {
 			wantNextSrv:  net.IPv4(0, 0, 0, 0),
 		},
 		"success userclass iPXE": {
-			server: Server{Log: logr.Discard()},
+			server: &Server{Log: logr.Discard()},
 			args: args{
 				mac:    net.HardwareAddr{0x01, 0x02, 0x03, 0x04, 0x05, 0x07},
 				uClass: IPXE,
@@ -190,7 +193,7 @@ func TestBootfileAndNextServer(t *testing.T) {
 			wantNextSrv:  net.ParseIP("192.168.6.5"),
 		},
 		"success userclass iPXE with otel": {
-			server: Server{Log: logr.Discard(), OTELEnabled: true},
+			server: &Server{Log: logr.Discard(), OTELEnabled: true},
 			args: args{
 				mac:    net.HardwareAddr{0x01, 0x02, 0x03, 0x04, 0x05, 0x07},
 				uClass: IPXE,
@@ -198,11 +201,11 @@ func TestBootfileAndNextServer(t *testing.T) {
 				tftp:   netaddr.IPPortFrom(netaddr.IPv4(192, 168, 6, 5), 69),
 				ipxe:   &url.URL{Scheme: "tftp", Host: "192.168.6.5:69"},
 			},
-			wantBootFile: "tftp://192.168.6.5:69/unidonly.kpxe-00-00000000000000000000000000000000-0000000000000000-00",
+			wantBootFile: "tftp://192.168.6.5:69/unidonly.kpxe-00-23b1e307bb35484f535a1f772c06910e-d887dc3912240434-01",
 			wantNextSrv:  net.ParseIP("192.168.6.5"),
 		},
 		"success default": {
-			server: Server{Log: logr.Discard()},
+			server: &Server{Log: logr.Discard()},
 			args: args{
 				mac:  net.HardwareAddr{0x01, 0x02, 0x03, 0x04, 0x05, 0x07},
 				bin:  "unidonly.kpxe",
@@ -215,20 +218,14 @@ func TestBootfileAndNextServer(t *testing.T) {
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			s := &Server{
-				ctx:               tt.server.ctx,
-				Log:               tt.server.Log,
-				Listener:          tt.server.Listener,
-				IPAddr:            tt.server.IPAddr,
-				IPXEBinServerTFTP: tt.server.IPXEBinServerTFTP,
-				IPXEBinServerHTTP: tt.server.IPXEBinServerHTTP,
-				IPXEScriptURL:     tt.server.IPXEScriptURL,
-				NetbootEnabled:    tt.server.NetbootEnabled,
-				UserClass:         tt.server.UserClass,
-				Backend:           tt.server.Backend,
-				OTELEnabled:       tt.server.OTELEnabled,
+			ctx := context.Background()
+			if tt.server.OTELEnabled {
+				// set global propagator to tracecontext (the default is no-op).
+				prop := propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{})
+				otel.SetTextMapPropagator(prop)
+				ctx = otelhelpers.ContextWithTraceparentString(ctx, "00-23b1e307bb35484f535a1f772c06910e-d887dc3912240434-01")
 			}
-			bootfile, nextServer := s.bootfileAndNextServer(tt.server.ctx, tt.args.uClass, tt.args.opt60, tt.args.bin, tt.args.tftp, tt.args.ipxe, tt.args.iscript)
+			bootfile, nextServer := tt.server.bootfileAndNextServer(ctx, tt.args.uClass, tt.args.opt60, tt.args.bin, tt.args.tftp, tt.args.ipxe, tt.args.iscript)
 			if diff := cmp.Diff(tt.wantBootFile, bootfile); diff != "" {
 				t.Fatal("bootfile", diff)
 			}
@@ -246,12 +243,12 @@ func TestSetNetworkBootOpts(t *testing.T) {
 		n   *data.Netboot
 	}
 	tests := map[string]struct {
-		server Server
+		server *Server
 		args   args
 		want   *dhcpv4.DHCPv4
 	}{
 		"netboot not allowed": {
-			server: Server{Log: logr.Discard()},
+			server: &Server{Log: logr.Discard()},
 			args: args{
 				in0: context.Background(),
 				m:   &dhcpv4.DHCPv4{},
@@ -260,7 +257,7 @@ func TestSetNetworkBootOpts(t *testing.T) {
 			want: &dhcpv4.DHCPv4{ServerIPAddr: net.IPv4(0, 0, 0, 0), BootFileName: "/netboot-not-allowed"},
 		},
 		"netboot allowed": {
-			server: Server{Log: logr.Discard(), IPXEScriptURL: &url.URL{Scheme: "http", Host: "localhost:8181", Path: "/01:02:03:04:05:06/auto.ipxe"}},
+			server: &Server{Log: logr.Discard(), IPXEScriptURL: &url.URL{Scheme: "http", Host: "localhost:8181", Path: "/01:02:03:04:05:06/auto.ipxe"}},
 			args: args{
 				in0: context.Background(),
 				m: &dhcpv4.DHCPv4{
@@ -282,7 +279,7 @@ func TestSetNetworkBootOpts(t *testing.T) {
 			)},
 		},
 		"netboot not allowed, arch unknown": {
-			server: Server{Log: logr.Discard(), IPXEScriptURL: &url.URL{Scheme: "http", Host: "localhost:8181", Path: "/01:02:03:04:05:06/auto.ipxe"}},
+			server: &Server{Log: logr.Discard(), IPXEScriptURL: &url.URL{Scheme: "http", Host: "localhost:8181", Path: "/01:02:03:04:05:06/auto.ipxe"}},
 			args: args{
 				in0: context.Background(),
 				m: &dhcpv4.DHCPv4{
