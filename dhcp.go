@@ -3,22 +3,11 @@ package dhcp
 
 import (
 	"context"
-	"net"
 	"net/url"
 
 	"github.com/go-logr/logr"
-	"github.com/tinkerbell/dhcp/data"
 	"inet.af/netaddr"
 )
-
-// BackendReader is the interface that wraps the Read method.
-//
-// Backends implement this interface to provide DHCP data to the DHCP server.
-type BackendReader interface {
-	// Read data (from a backend) based on a mac address
-	// and return DHCP headers and options, including netboot info.
-	Read(context.Context, net.HardwareAddr) (*data.Dhcp, *data.Netboot, error)
-}
 
 // Server holds the configuration details for the running the DHCP server.
 type Server struct {

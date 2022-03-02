@@ -23,7 +23,7 @@ func TestSetDHCPOpts(t *testing.T) {
 	type args struct {
 		in0 context.Context
 		m   *dhcpv4.DHCPv4
-		d   *data.Dhcp
+		d   *data.DHCP
 	}
 	tests := map[string]struct {
 		server Server
@@ -35,7 +35,7 @@ func TestSetDHCPOpts(t *testing.T) {
 			args: args{
 				in0: context.Background(),
 				m:   &dhcpv4.DHCPv4{Options: dhcpv4.OptionsFromList(dhcpv4.OptParameterRequestList(dhcpv4.OptionSubnetMask))},
-				d: &data.Dhcp{
+				d: &data.DHCP{
 					MacAddress:     net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
 					IPAddress:      netaddr.IPv4(192, 168, 4, 4),
 					SubnetMask:     []byte{255, 255, 255, 0},
