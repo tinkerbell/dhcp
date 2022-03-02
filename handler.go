@@ -9,6 +9,7 @@ import (
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/tinkerbell/dhcp/data"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 )
