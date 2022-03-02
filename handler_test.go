@@ -37,7 +37,7 @@ func (m *mockBackend) Read(context.Context, net.HardwareAddr) (*data.DHCP, *data
 		return nil, nil, m.err
 	}
 	d := &data.DHCP{
-		MacAddress:     []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06},
+		MACAddress:     []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06},
 		IPAddress:      netaddr.IPv4(192, 168, 1, 100),
 		SubnetMask:     []byte{255, 255, 255, 0},
 		DefaultGateway: netaddr.IPv4(192, 168, 1, 1),
@@ -57,7 +57,7 @@ func (m *mockBackend) Read(context.Context, net.HardwareAddr) (*data.DHCP, *data
 	}
 	n := &data.Netboot{
 		AllowNetboot:  m.allowNetboot,
-		IpxeScriptURL: m.ipxeScript,
+		IPXEScriptURL: m.ipxeScript,
 	}
 	return d, n, m.err
 }
@@ -304,7 +304,7 @@ func TestUpdateMsg(t *testing.T) {
 					),
 				},
 				data:    &data.DHCP{IPAddress: netaddr.IPv4(192, 168, 1, 100), SubnetMask: net.IP{255, 255, 255, 0}.DefaultMask()},
-				netboot: &data.Netboot{AllowNetboot: true, IpxeScriptURL: &url.URL{Scheme: "http", Host: "localhost:8181", Path: "auto.ipxe"}},
+				netboot: &data.Netboot{AllowNetboot: true, IPXEScriptURL: &url.URL{Scheme: "http", Host: "localhost:8181", Path: "auto.ipxe"}},
 				msg:     dhcpv4.MessageTypeDiscover,
 			},
 			want: &dhcpv4.DHCPv4{
@@ -374,7 +374,7 @@ func TestReadBackend(t *testing.T) {
 				),
 			},
 			wantDHCP: &data.DHCP{
-				MacAddress:       []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06},
+				MACAddress:       []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06},
 				IPAddress:        netaddr.IPv4(192, 168, 1, 100),
 				SubnetMask:       []byte{255, 255, 255, 0},
 				DefaultGateway:   netaddr.IPv4(192, 168, 1, 1),
@@ -386,7 +386,7 @@ func TestReadBackend(t *testing.T) {
 				LeaseTime:        60,
 				DomainSearch:     []string{"mydomain.com"},
 			},
-			wantNetboot: &data.Netboot{AllowNetboot: true, IpxeScriptURL: &url.URL{Scheme: "http", Host: "localhost:8181", Path: "auto.ipxe"}},
+			wantNetboot: &data.Netboot{AllowNetboot: true, IPXEScriptURL: &url.URL{Scheme: "http", Host: "localhost:8181", Path: "auto.ipxe"}},
 			wantErr:     nil,
 		},
 		"failure": {

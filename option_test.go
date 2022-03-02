@@ -39,7 +39,7 @@ func TestSetDHCPOpts(t *testing.T) {
 				in0: context.Background(),
 				m:   &dhcpv4.DHCPv4{Options: dhcpv4.OptionsFromList(dhcpv4.OptParameterRequestList(dhcpv4.OptionSubnetMask))},
 				d: &data.DHCP{
-					MacAddress:     net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
+					MACAddress:     net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
 					IPAddress:      netaddr.IPv4(192, 168, 4, 4),
 					SubnetMask:     []byte{255, 255, 255, 0},
 					DefaultGateway: netaddr.IPv4(192, 168, 4, 1),
@@ -268,7 +268,7 @@ func TestSetNetworkBootOpts(t *testing.T) {
 						dhcpv4.OptClientArch(iana.EFI_X86_64_HTTP),
 					),
 				},
-				n: &data.Netboot{AllowNetboot: true, IpxeScriptURL: &url.URL{Scheme: "http", Host: "localhost:8181", Path: "/01:02:03:04:05:06/auto.ipxe"}},
+				n: &data.Netboot{AllowNetboot: true, IPXEScriptURL: &url.URL{Scheme: "http", Host: "localhost:8181", Path: "/01:02:03:04:05:06/auto.ipxe"}},
 			},
 			want: &dhcpv4.DHCPv4{BootFileName: "http://localhost:8181/01:02:03:04:05:06/auto.ipxe", Options: dhcpv4.OptionsFromList(
 				dhcpv4.OptGeneric(dhcpv4.OptionVendorSpecificInformation, dhcpv4.Options{

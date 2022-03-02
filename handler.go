@@ -97,17 +97,8 @@ func (s *Server) readBackend(ctx context.Context, m *dhcpv4.DHCPv4) (*data.DHCP,
 		return nil, nil, err
 	}
 
-	span.SetAttributes(
-		attribute.String("messageType", m.MessageType().String()),
-		attribute.String("Subnet", d.SubnetMask.String()),
-		attribute.String("DefaultGateway", d.DefaultGateway.String()),
-		attribute.String("Nameservers", fmt.Sprintf("%v", d.NameServers)),
-		attribute.String("Hostname", d.Hostname),
-		attribute.String("DomainName", d.DomainName),
-		attribute.Int("LeaseTime", int(d.LeaseTime)),
-		attribute.Bool("AllowNetboot", n.AllowNetboot),
-		attribute.String("IpxeScriptURL", fmt.Sprintf("%v", n.IpxeScriptURL)),
-	)
+	span.SetAttributes(d.EncodeToAttributes()...)
+	span.SetAttributes(n.EncodeToAttributes()...)
 	span.SetStatus(codes.Ok, "done reading from backend")
 
 	return d, n, nil
@@ -225,7 +216,7 @@ func encodeToAttributes(pkt []byte) []attribute.KeyValue {
 		sm = net.IP(d.SubnetMask()).String()
 	}
 
-	// this is needed because dhcpv4.DHCPv4.Options don't get zero values like top level struct values do.
+	// this is needed because dhcpv4.DHCPv4.Options don't always get zero values like top level struct values do.
 	var ba string
 	if d.BroadcastAddress() != nil {
 		ba = d.BroadcastAddress().String()

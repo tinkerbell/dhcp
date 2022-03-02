@@ -142,8 +142,8 @@ func (s *Server) setNetworkBootOpts(ctx context.Context, m *dhcpv4.DHCPv4, n *da
 			}
 			uClass := UserClass(string(m.GetOneOption(dhcpv4.OptionUserClassInformation)))
 			ipxeScript := s.IPXEScriptURL
-			if n.IpxeScriptURL != nil {
-				ipxeScript = n.IpxeScriptURL
+			if n.IPXEScriptURL != nil {
+				ipxeScript = n.IPXEScriptURL
 			}
 			d.BootFileName, d.ServerIPAddr = s.bootfileAndNextServer(ctx, uClass, opt60, bin, s.IPXEBinServerTFTP, s.IPXEBinServerHTTP, ipxeScript)
 			pxe := dhcpv4.Options{ // FYI, these are suboptions of option43. ref: https://datatracker.ietf.org/doc/html/rfc2132#section-8.4
