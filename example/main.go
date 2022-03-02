@@ -37,6 +37,7 @@ func main() {
 		IPXEBinServerHTTP: &url.URL{Scheme: "http", Host: "192.168.1.34:8080"},
 		IPXEScriptURL:     &url.URL{Scheme: "https", Host: "boot.netboot.xyz"},
 		NetbootEnabled:    true,
+		OTELEnabled:       true,
 		Backend:           b,
 	}
 	l.Info("starting server", "addr", s.Listener)
