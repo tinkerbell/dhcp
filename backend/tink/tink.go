@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"strings"
 
 	"github.com/go-logr/logr"
 	"github.com/tinkerbell/dhcp/data"
@@ -33,7 +34,7 @@ type Config struct {
 // Read is the Tink implementation of the Backend interface.
 func (c *Config) Read(ctx context.Context, mac net.HardwareAddr) (*data.DHCP, *data.Netboot, error) {
 	tracer := otel.Tracer(tracerName)
-	_, span := tracer.Start(ctx, "backend.tink.Read")
+	ctx, span := tracer.Start(ctx, "backend.tink.Read")
 	defer span.End()
 
 	h, err := c.Client.ByMAC(ctx, &hardware.GetRequest{Mac: mac.String()})
@@ -44,13 +45,15 @@ func (c *Config) Read(ctx context.Context, mac net.HardwareAddr) (*data.DHCP, *d
 	}
 
 	for _, e := range h.GetNetwork().Interfaces {
-		if e.GetDhcp().Mac == mac.String() {
+		if strings.EqualFold(e.GetDhcp().Mac, mac.String()) {
 			d, n, err := c.translate(e.GetDhcp(), e.GetNetboot())
 			if err != nil {
 				span.SetStatus(codes.Error, err.Error())
 
 				return nil, nil, err
 			}
+			span.SetAttributes(d.EncodeToAttributes()...)
+			span.SetAttributes(n.EncodeToAttributes()...)
 			span.SetStatus(codes.Ok, "")
 
 			return d, n, nil
@@ -73,6 +76,13 @@ func (c *Config) translate(h *hardware.Hardware_DHCP, n *hardware.Hardware_Netbo
 		return nil, nil, fmt.Errorf("%v: %w", err, errParseIP)
 	}
 	dhcp.IPAddress = ip
+
+	// mac address, required
+	mac, err := net.ParseMAC(h.GetMac())
+	if err != nil {
+		return nil, nil, fmt.Errorf("%w", err)
+	}
+	dhcp.MACAddress = mac
 
 	// subnet mask, required
 	sm, err := netaddr.ParseIP(h.GetIp().Netmask)
