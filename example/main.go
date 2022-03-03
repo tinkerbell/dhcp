@@ -24,7 +24,7 @@ func main() {
 
 	l := stdr.New(log.New(os.Stdout, "", log.Lshortfile))
 	l = l.WithName("github.com/tinkerbell/dhcp")
-	b, err := backendFile(ctx, l, "./backend/file/testdata/example.yaml")
+	b, err := fileBackend(ctx, l, "./backend/file/testdata/example.yaml")
 	if err != nil {
 		panic(err)
 	}
@@ -45,7 +45,7 @@ func main() {
 	l.Info("done")
 }
 
-func backendFile(ctx context.Context, l logr.Logger, f string) (dhcp.BackendReader, error) {
+func fileBackend(ctx context.Context, l logr.Logger, f string) (dhcp.BackendReader, error) {
 	fb, err := file.NewWatcher(l, f)
 	if err != nil {
 		return nil, err
