@@ -11,6 +11,7 @@ require (
 	github.com/google/go-cmp v0.5.7
 	github.com/imdario/mergo v0.3.12
 	github.com/insomniacslk/dhcp v0.0.0-20220119180841-3c283ff8b7dd
+	github.com/tinkerbell/tink v0.6.0
 	github.com/tonglil/buflogr v0.0.0-20220413082439-d4c2784244cd
 	go.opentelemetry.io/otel v1.4.0
 	go.opentelemetry.io/otel/trace v1.4.0
@@ -35,8 +36,8 @@ require (
 	golang.org/x/sys v0.0.0-20220412211240-33da011f77ad // indirect
 	golang.org/x/text v0.3.6 // indirect
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
-	google.golang.org/genproto v0.0.0-20200526211855-cb27e3aa2013 // indirect
+	google.golang.org/genproto v0.0.0-20210602131652-f16073e35f0c // indirect
 	google.golang.org/grpc v1.44.0 // indirect
 	google.golang.org/protobuf v1.27.1 // indirect
-	gopkg.in/yaml.v2 v2.3.0 // indirect
+	gopkg.in/yaml.v2 v2.4.0 // indirect
 )
