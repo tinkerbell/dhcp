@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/equinix-labs/otel-init-go/otelhelpers"
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/insomniacslk/dhcp/iana"
 	"github.com/tinkerbell/dhcp/data"
@@ -136,13 +137,13 @@ func (s *Server) setNetworkBootOpts(ctx context.Context, m *dhcpv4.DHCPv4, n *da
 			a := arch(m)
 			bin, found := ArchToBootFile[a]
 			if !found {
-				s.Log.Error(fmt.Errorf("unable to find bootfile for arch"), "arch", a)
+				s.Log.Error(fmt.Errorf("unable to find bootfile for arch"), "network boot not allowed", "arch", a, "archInt", int(a), "mac", m.ClientHWAddr)
 				return
 			}
 			uClass := UserClass(string(m.GetOneOption(dhcpv4.OptionUserClassInformation)))
 			ipxeScript := s.IPXEScriptURL
-			if n.IpxeScriptURL != nil {
-				ipxeScript = n.IpxeScriptURL
+			if n.IPXEScriptURL != nil {
+				ipxeScript = n.IPXEScriptURL
 			}
 			d.BootFileName, d.ServerIPAddr = s.bootfileAndNextServer(ctx, uClass, opt60, bin, s.IPXEBinServerTFTP, s.IPXEBinServerHTTP, ipxeScript)
 			pxe := dhcpv4.Options{ // FYI, these are suboptions of option43. ref: https://datatracker.ietf.org/doc/html/rfc2132#section-8.4
@@ -164,11 +165,8 @@ func (s *Server) bootfileAndNextServer(ctx context.Context, uClass UserClass, op
 	var nextServer net.IP
 	var bootfile string
 	if s.OTELEnabled {
-		span := trace.SpanContextFromContext(ctx)
-		tID := span.TraceID().String()
-		sID := span.SpanID().String()
-		fID := span.TraceFlags().String()
-		bin = fmt.Sprintf("%s-00-%v-%v-%v", bin, tID, sID, fID)
+		tp := otelhelpers.TraceparentStringFromContext(ctx)
+		bin = fmt.Sprintf("%s-%v", bin, tp)
 	}
 	// If a machine is in an ipxe boot loop, it is likely to be that we aren't matching on IPXE or Tinkerbell userclass (option 77).
 	switch { // order matters here.

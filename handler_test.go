@@ -19,6 +19,7 @@ import (
 	"github.com/insomniacslk/dhcp/iana"
 	"github.com/insomniacslk/dhcp/rfc1035label"
 	"github.com/tinkerbell/dhcp/data"
+	"go.opentelemetry.io/otel/attribute"
 	"golang.org/x/net/nettest"
 	"inet.af/netaddr"
 )
@@ -36,7 +37,7 @@ func (m *mockBackend) Read(context.Context, net.HardwareAddr) (*data.DHCP, *data
 		return nil, nil, m.err
 	}
 	d := &data.DHCP{
-		MacAddress:     []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06},
+		MACAddress:     []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06},
 		IPAddress:      netaddr.IPv4(192, 168, 1, 100),
 		SubnetMask:     []byte{255, 255, 255, 0},
 		DefaultGateway: netaddr.IPv4(192, 168, 1, 1),
@@ -56,7 +57,7 @@ func (m *mockBackend) Read(context.Context, net.HardwareAddr) (*data.DHCP, *data
 	}
 	n := &data.Netboot{
 		AllowNetboot:  m.allowNetboot,
-		IpxeScriptURL: m.ipxeScript,
+		IPXEScriptURL: m.ipxeScript,
 	}
 	return d, n, m.err
 }
@@ -303,7 +304,7 @@ func TestUpdateMsg(t *testing.T) {
 					),
 				},
 				data:    &data.DHCP{IPAddress: netaddr.IPv4(192, 168, 1, 100), SubnetMask: net.IP{255, 255, 255, 0}.DefaultMask()},
-				netboot: &data.Netboot{AllowNetboot: true, IpxeScriptURL: &url.URL{Scheme: "http", Host: "localhost:8181", Path: "auto.ipxe"}},
+				netboot: &data.Netboot{AllowNetboot: true, IPXEScriptURL: &url.URL{Scheme: "http", Host: "localhost:8181", Path: "auto.ipxe"}},
 				msg:     dhcpv4.MessageTypeDiscover,
 			},
 			want: &dhcpv4.DHCPv4{
@@ -373,7 +374,7 @@ func TestReadBackend(t *testing.T) {
 				),
 			},
 			wantDHCP: &data.DHCP{
-				MacAddress:       []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06},
+				MACAddress:       []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06},
 				IPAddress:        netaddr.IPv4(192, 168, 1, 100),
 				SubnetMask:       []byte{255, 255, 255, 0},
 				DefaultGateway:   netaddr.IPv4(192, 168, 1, 1),
@@ -385,7 +386,7 @@ func TestReadBackend(t *testing.T) {
 				LeaseTime:        60,
 				DomainSearch:     []string{"mydomain.com"},
 			},
-			wantNetboot: &data.Netboot{AllowNetboot: true, IpxeScriptURL: &url.URL{Scheme: "http", Host: "localhost:8181", Path: "auto.ipxe"}},
+			wantNetboot: &data.Netboot{AllowNetboot: true, IPXEScriptURL: &url.URL{Scheme: "http", Host: "localhost:8181", Path: "auto.ipxe"}},
 			wantErr:     nil,
 		},
 		"failure": {
@@ -471,6 +472,54 @@ func TestIsNetbootClient(t *testing.T) {
 			s := &Server{Log: logr.Discard()}
 			if s.isNetbootClient(tt.input) != tt.want {
 				t.Errorf("isNetbootClient() = %v, want %v", !tt.want, tt.want)
+			}
+		})
+	}
+}
+
+func TestEncodeToAttributes(t *testing.T) {
+	tests := map[string]struct {
+		input *dhcpv4.DHCPv4
+		want  []attribute.KeyValue
+	}{
+		"success": {
+			input: &dhcpv4.DHCPv4{Options: dhcpv4.OptionsFromList(dhcpv4.OptMessageType(dhcpv4.MessageTypeDiscover))},
+			want: []attribute.KeyValue{
+				attribute.String("DHCP.Header.yiaddr", "0.0.0.0"),
+				attribute.String("DHCP.Header.siaddr", "0.0.0.0"),
+				attribute.String("DHCP.Header.chaddr", ""),
+				attribute.String("DHCP.Header.file", ""),
+				attribute.String("DHCP.Opt1.SubnetMask", ""),
+				attribute.String("DHCP.Opt3.DefaultGateway", ""),
+				attribute.String("DHCP.Opt6.NameServers", ""),
+				attribute.String("DHCP.Opt12.Hostname", ""),
+				attribute.String("DHCP.Opt15.DomainName", ""),
+				attribute.String("DHCP.Opt28.BroadcastAddress", ""),
+				attribute.String("DHCP.Opt42.NTPServers", ""),
+				attribute.Float64("DHCP.Opt51.LeaseTime", 0),
+				attribute.String("DHCP.Opt53.MessageType", "DISCOVER"),
+				attribute.String("DHCP.Opt54.ServerIdentifier", ""),
+				attribute.String("DHCP.Opt119.DomainSearch", ""),
+			},
+		},
+		"fail to parse dhcp packet": {
+			input: nil,
+			want:  []attribute.KeyValue{},
+		},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			var pkt []byte
+			if tt.input != nil {
+				pkt = tt.input.ToBytes()
+			}
+			got := attribute.NewSet(encodeToAttributes(pkt)...)
+			want := attribute.NewSet(tt.want...)
+			enc := attribute.DefaultEncoder()
+			if diff := cmp.Diff(got.Encoded(enc), want.Encoded(enc)); diff != "" {
+				t.Log(got.Encoded(enc))
+				t.Log(want.Encoded(enc))
+				t.Fatal(diff)
 			}
 		})
 	}
