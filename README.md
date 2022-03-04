@@ -9,7 +9,7 @@ DHCP library and CLI server with multiple backends. All IP addresses are served 
 
 ## Backends
 
-- [Tink server](https://github.com/tinkerbell/tink)
+- [Tink server](docs/Backend-Tink.md)
   - This backend is the main use case.
   It pulls hardware data from the Tink API for use in the DHCP server.
 - File based

@@ -32,6 +32,7 @@ type Config struct {
 }
 
 // Read is the Tink implementation of the Backend interface.
+// This will make a call to the Tink server to get a hardware record.
 func (c *Config) Read(ctx context.Context, mac net.HardwareAddr) (*data.DHCP, *data.Netboot, error) {
 	tracer := otel.Tracer(tracerName)
 	ctx, span := tracer.Start(ctx, "backend.tink.Read")
@@ -66,6 +67,9 @@ func (c *Config) Read(ctx context.Context, mac net.HardwareAddr) (*data.DHCP, *d
 	return nil, nil, err
 }
 
+// translate tink hardware records to dhcp and netboot records.
+// At the moment, IP address, Mac address, and Subnet mask are the only required fields.
+// If an IPXE script is provided but not in url.URL format, translate will error.
 func (c *Config) translate(h *hardware.Hardware_DHCP, n *hardware.Hardware_Netboot) (*data.DHCP, *data.Netboot, error) {
 	dhcp := new(data.DHCP)
 	netboot := new(data.Netboot)
