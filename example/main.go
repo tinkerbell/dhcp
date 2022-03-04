@@ -35,10 +35,11 @@ func main() {
 	tinkIP := "127.0.0.1"
 	flag.StringVar(&tinkIP, "ip", tinkIP, "IP address of the tink server")
 	flag.Parse()
-	b, err := tinkBackend(ctx, l, tinkIP, time.Second*10)
+	b, client, err := tinkBackend(ctx, l, tinkIP, time.Second*10)
 	if err != nil {
 		panic(err)
 	}
+	defer client.Close() // nolint: errcheck // ok for an example file?
 
 	s := &dhcp.Server{
 		Log:               l,
@@ -56,30 +57,20 @@ func main() {
 	l.Info("done")
 }
 
-func tinkBackend(ctx context.Context, l logr.Logger, tinkIP string, timeout time.Duration) (dhcp.BackendReader, error) {
+func tinkBackend(ctx context.Context, l logr.Logger, tinkIP string, timeout time.Duration) (*tink.Config, *grpc.ClientConn, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	dialOpt, err := LoadTLSFromValue(ctx, fmt.Sprintf("http://%v:42114/cert", tinkIP))
 	if err != nil {
-		return nil, fmt.Errorf("unable to create gRPC client TLS dial option: %w", err)
+		return nil, nil, fmt.Errorf("unable to create gRPC client TLS dial option: %w", err)
 	}
 
-	client, err := grpc.DialContext(ctx, fmt.Sprintf("%v:42113", tinkIP), dialOpt)
+	client, err := grpc.DialContext(ctx, fmt.Sprintf("%v:42113", tinkIP), dialOpt, grpc.WithBlock())
 	if err != nil {
-		return nil, fmt.Errorf("error connecting to tink server: %w", err)
+		return nil, nil, fmt.Errorf("error connecting to tink server: %w", err)
 	}
 
-	cl := hardware.NewHardwareServiceClient(client)
-	_, err = cl.All(ctx, &hardware.Empty{})
-	if err != nil {
-		return nil, fmt.Errorf("error connecting to tink server: %w", err)
-	}
-	fb := &tink.Config{
-		Log:    l,
-		Client: cl,
-	}
-
-	return fb, nil
+	return &tink.Config{Log: l, Client: hardware.NewHardwareServiceClient(client)}, client, nil
 }
 
 // LoadTLSFromValue handles reading a cert from an HTTP endpoint and forming a TLS grpc.DialOption.
