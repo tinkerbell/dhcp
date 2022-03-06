@@ -479,27 +479,49 @@ func TestIsNetbootClient(t *testing.T) {
 
 func TestEncodeToAttributes(t *testing.T) {
 	tests := map[string]struct {
-		input *dhcpv4.DHCPv4
-		want  []attribute.KeyValue
+		input     *dhcpv4.DHCPv4
+		namespace string
+		want      []attribute.KeyValue
 	}{
 		"success": {
 			input: &dhcpv4.DHCPv4{Options: dhcpv4.OptionsFromList(dhcpv4.OptMessageType(dhcpv4.MessageTypeDiscover))},
 			want: []attribute.KeyValue{
-				attribute.String("DHCP.Header.yiaddr", "0.0.0.0"),
-				attribute.String("DHCP.Header.siaddr", "0.0.0.0"),
-				attribute.String("DHCP.Header.chaddr", ""),
-				attribute.String("DHCP.Header.file", ""),
-				attribute.String("DHCP.Opt1.SubnetMask", ""),
-				attribute.String("DHCP.Opt3.DefaultGateway", ""),
-				attribute.String("DHCP.Opt6.NameServers", ""),
-				attribute.String("DHCP.Opt12.Hostname", ""),
-				attribute.String("DHCP.Opt15.DomainName", ""),
-				attribute.String("DHCP.Opt28.BroadcastAddress", ""),
-				attribute.String("DHCP.Opt42.NTPServers", ""),
-				attribute.Float64("DHCP.Opt51.LeaseTime", 0),
-				attribute.String("DHCP.Opt53.MessageType", "DISCOVER"),
-				attribute.String("DHCP.Opt54.ServerIdentifier", ""),
-				attribute.String("DHCP.Opt119.DomainSearch", ""),
+				attribute.String("DHCP.msg.Header.yiaddr", "0.0.0.0"),
+				attribute.String("DHCP.msg.Header.siaddr", "0.0.0.0"),
+				attribute.String("DHCP.msg.Header.chaddr", ""),
+				attribute.String("DHCP.msg.Header.file", ""),
+				attribute.String("DHCP.msg.Opt1.SubnetMask", ""),
+				attribute.String("DHCP.msg.Opt3.DefaultGateway", ""),
+				attribute.String("DHCP.msg.Opt6.NameServers", ""),
+				attribute.String("DHCP.msg.Opt12.Hostname", ""),
+				attribute.String("DHCP.msg.Opt15.DomainName", ""),
+				attribute.String("DHCP.msg.Opt28.BroadcastAddress", ""),
+				attribute.String("DHCP.msg.Opt42.NTPServers", ""),
+				attribute.Float64("DHCP.msg.Opt51.LeaseTime", 0),
+				attribute.String("DHCP.msg.Opt53.MessageType", "DISCOVER"),
+				attribute.String("DHCP.msg.Opt54.ServerIdentifier", ""),
+				attribute.String("DHCP.msg.Opt119.DomainSearch", ""),
+			},
+		},
+		"success custom namespace": {
+			input:     &dhcpv4.DHCPv4{Options: dhcpv4.OptionsFromList(dhcpv4.OptMessageType(dhcpv4.MessageTypeDiscover))},
+			namespace: "reply",
+			want: []attribute.KeyValue{
+				attribute.String("DHCP.reply.Header.yiaddr", "0.0.0.0"),
+				attribute.String("DHCP.reply.Header.siaddr", "0.0.0.0"),
+				attribute.String("DHCP.reply.Header.chaddr", ""),
+				attribute.String("DHCP.reply.Header.file", ""),
+				attribute.String("DHCP.reply.Opt1.SubnetMask", ""),
+				attribute.String("DHCP.reply.Opt3.DefaultGateway", ""),
+				attribute.String("DHCP.reply.Opt6.NameServers", ""),
+				attribute.String("DHCP.reply.Opt12.Hostname", ""),
+				attribute.String("DHCP.reply.Opt15.DomainName", ""),
+				attribute.String("DHCP.reply.Opt28.BroadcastAddress", ""),
+				attribute.String("DHCP.reply.Opt42.NTPServers", ""),
+				attribute.Float64("DHCP.reply.Opt51.LeaseTime", 0),
+				attribute.String("DHCP.reply.Opt53.MessageType", "DISCOVER"),
+				attribute.String("DHCP.reply.Opt54.ServerIdentifier", ""),
+				attribute.String("DHCP.reply.Opt119.DomainSearch", ""),
 			},
 		},
 		"fail to parse dhcp packet": {
@@ -513,7 +535,7 @@ func TestEncodeToAttributes(t *testing.T) {
 			if tt.input != nil {
 				pkt = tt.input.ToBytes()
 			}
-			got := attribute.NewSet(encodeToAttributes(pkt)...)
+			got := attribute.NewSet(encodeToAttributes(pkt, tt.namespace)...)
 			want := attribute.NewSet(tt.want...)
 			enc := attribute.DefaultEncoder()
 			if diff := cmp.Diff(got.Encoded(enc), want.Encoded(enc)); diff != "" {
