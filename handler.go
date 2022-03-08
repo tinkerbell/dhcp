@@ -32,11 +32,11 @@ func (s *Server) handleFunc(conn net.PacketConn, peer net.Addr, m *dhcpv4.DHCPv4
 	tracer := otel.Tracer(tracerName)
 	ctx, span := tracer.Start(s.ctx,
 		fmt.Sprintf("DHCP Packet Received: %v", m.MessageType().String()),
-		trace.WithAttributes(encodeToAttributes(m.ToBytes(), "request")...),
+		trace.WithAttributes(s.encodeToAttributes(m, "request")...),
 	)
 	defer span.End()
 
-	var reply []byte
+	var reply *dhcpv4.DHCPv4
 	switch mt := m.MessageType(); mt {
 	case dhcpv4.MessageTypeDiscover:
 		d, n, err := s.readBackend(ctx, m)
@@ -75,7 +75,7 @@ func (s *Server) handleFunc(conn net.PacketConn, peer net.Addr, m *dhcpv4.DHCPv4
 		return
 	}
 
-	if _, err := conn.WriteTo(reply, peer); err != nil {
+	if _, err := conn.WriteTo(reply.ToBytes(), peer); err != nil {
 		log.Error(err, "failed to send DHCP")
 		span.SetStatus(codes.Error, err.Error())
 
@@ -83,7 +83,7 @@ func (s *Server) handleFunc(conn net.PacketConn, peer net.Addr, m *dhcpv4.DHCPv4
 	}
 
 	log.Info("sent DHCP response")
-	span.SetAttributes(encodeToAttributes(reply, "reply")...)
+	span.SetAttributes(s.encodeToAttributes(reply, "reply")...)
 	span.SetStatus(codes.Ok, "sent DHCP response")
 }
 
@@ -109,7 +109,7 @@ func (s *Server) readBackend(ctx context.Context, m *dhcpv4.DHCPv4) (*data.DHCP,
 }
 
 // updateMsg handles updating DHCP packets with the data from the backend.
-func (s *Server) updateMsg(ctx context.Context, m *dhcpv4.DHCPv4, d *data.DHCP, n *data.Netboot, msgType dhcpv4.MessageType) []byte {
+func (s *Server) updateMsg(ctx context.Context, m *dhcpv4.DHCPv4, d *data.DHCP, n *data.Netboot, msgType dhcpv4.MessageType) *dhcpv4.DHCPv4 {
 	mods := []dhcpv4.Modifier{
 		dhcpv4.WithMessageType(msgType),
 		dhcpv4.WithGeneric(dhcpv4.OptionServerIdentifier, s.IPAddr.IPAddr().IP),
@@ -125,7 +125,7 @@ func (s *Server) updateMsg(ctx context.Context, m *dhcpv4.DHCPv4, d *data.DHCP, 
 		return nil
 	}
 
-	return reply.ToBytes()
+	return reply
 }
 
 // isNetbootClient returns true if the client is a valid netboot client.
@@ -188,68 +188,16 @@ func (s *Server) isNetbootClient(pkt *dhcpv4.DHCPv4) bool {
 	return true
 }
 
-// encodeToAttributes takes a DHCP packet in byte form and return opentelemetry key/value attributes.
-func encodeToAttributes(pkt []byte, namespace string) []attribute.KeyValue {
-	d, err := dhcpv4.FromBytes(pkt)
-	if err != nil {
-		return []attribute.KeyValue{}
+// encodeToAttributes takes a DHCP packet and returns opentelemetry key/value attributes.
+func (s *Server) encodeToAttributes(d *dhcpv4.DHCPv4, namespace string) []attribute.KeyValue {
+	a := &encoder{log: s.Log}
+	all := []func(d *dhcpv4.DHCPv4, namespace string) error{
+		a.encodeYIADDR, a.encodeSIADDR,
+		a.encodeCHADDR, a.encodeFILE,
+		a.encodeOpt1, a.encodeOpt3, a.encodeOpt6,
+		a.encodeOpt12, a.encodeOpt15, a.setOpt28,
+		a.encodeOpt42, a.encodeOpt51, a.encodeOpt53,
+		a.encodeOpt54, a.encodeOpt119,
 	}
-
-	var ns []string
-	for _, e := range d.DNS() {
-		ns = append(ns, e.String())
-	}
-
-	var ntp []string
-	for _, e := range d.NTPServers() {
-		ntp = append(ntp, e.String())
-	}
-
-	var ds []string
-	if l := d.DomainSearch(); l != nil {
-		ds = append(ds, l.Labels...)
-	}
-
-	var routers []string
-	for _, e := range d.Router() {
-		routers = append(routers, e.String())
-	}
-
-	var sm string
-	if d.SubnetMask() != nil {
-		sm = net.IP(d.SubnetMask()).String()
-	}
-
-	// this is needed because dhcpv4.DHCPv4.Options don't always get zero values like top level struct values do.
-	var ba string
-	if d.BroadcastAddress() != nil {
-		ba = d.BroadcastAddress().String()
-	}
-
-	var si string
-	if d.ServerIdentifier() != nil {
-		si = d.ServerIdentifier().String()
-	}
-
-	if namespace == "" {
-		namespace = "msg"
-	}
-
-	return []attribute.KeyValue{
-		attribute.String(fmt.Sprintf("DHCP.%v.Header.yiaddr", namespace), d.YourIPAddr.String()),
-		attribute.String(fmt.Sprintf("DHCP.%v.Header.siaddr", namespace), d.ServerIPAddr.String()),
-		attribute.String(fmt.Sprintf("DHCP.%v.Header.chaddr", namespace), d.ClientHWAddr.String()),
-		attribute.String(fmt.Sprintf("DHCP.%v.Header.file", namespace), d.BootFileName),
-		attribute.String(fmt.Sprintf("DHCP.%v.Opt1.SubnetMask", namespace), sm),
-		attribute.String(fmt.Sprintf("DHCP.%v.Opt3.DefaultGateway", namespace), strings.Join(routers, ",")),
-		attribute.String(fmt.Sprintf("DHCP.%v.Opt6.NameServers", namespace), strings.Join(ns, ",")),
-		attribute.String(fmt.Sprintf("DHCP.%v.Opt12.Hostname", namespace), d.HostName()),
-		attribute.String(fmt.Sprintf("DHCP.%v.Opt15.DomainName", namespace), d.DomainName()),
-		attribute.String(fmt.Sprintf("DHCP.%v.Opt28.BroadcastAddress", namespace), ba),
-		attribute.String(fmt.Sprintf("DHCP.%v.Opt42.NTPServers", namespace), strings.Join(ntp, ",")),
-		attribute.Float64(fmt.Sprintf("DHCP.%v.Opt51.LeaseTime", namespace), d.IPAddressLeaseTime(0).Seconds()),
-		attribute.String(fmt.Sprintf("DHCP.%v.Opt53.MessageType", namespace), d.MessageType().String()),
-		attribute.String(fmt.Sprintf("DHCP.%v.Opt54.ServerIdentifier", namespace), si),
-		attribute.String(fmt.Sprintf("DHCP.%v.Opt119.DomainSearch", namespace), strings.Join(ds, ",")),
-	}
+	return a.encode(d, namespace, all...)
 }

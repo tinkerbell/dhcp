@@ -308,13 +308,11 @@ func TestUpdateMsg(t *testing.T) {
 				msg:     dhcpv4.MessageTypeDiscover,
 			},
 			want: &dhcpv4.DHCPv4{
-				OpCode:        dhcpv4.OpcodeBootReply,
-				ClientHWAddr:  []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06},
-				YourIPAddr:    []byte{192, 168, 1, 100},
-				ClientIPAddr:  []byte{0, 0, 0, 0},
-				ServerIPAddr:  []byte{0, 0, 0, 0},
-				GatewayIPAddr: []byte{0, 0, 0, 0},
-				BootFileName:  "http://localhost:8181/auto.ipxe",
+				OpCode:       dhcpv4.OpcodeBootReply,
+				ClientHWAddr: []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06},
+				YourIPAddr:   []byte{192, 168, 1, 100},
+				ClientIPAddr: []byte{0, 0, 0, 0},
+				BootFileName: "http://localhost:8181/auto.ipxe",
 				Options: dhcpv4.OptionsFromList(
 					dhcpv4.OptMessageType(dhcpv4.MessageTypeDiscover),
 					dhcpv4.OptServerIdentifier(net.IP{127, 0, 0, 1}),
@@ -341,11 +339,7 @@ func TestUpdateMsg(t *testing.T) {
 				},
 				Listener: netaddr.IPPortFrom(netaddr.IPv4(127, 0, 0, 1), 67),
 			}
-			b := s.updateMsg(context.Background(), tt.args.m, tt.args.data, tt.args.netboot, tt.args.msg)
-			got, err := dhcpv4.FromBytes(b)
-			if err != nil {
-				t.Fatal(err)
-			}
+			got := s.updateMsg(context.Background(), tt.args.m, tt.args.data, tt.args.netboot, tt.args.msg)
 			if diff := cmp.Diff(got, tt.want, cmpopts.IgnoreUnexported(dhcpv4.DHCPv4{})); diff != "" {
 				t.Fatal(diff)
 			}
@@ -479,63 +473,22 @@ func TestIsNetbootClient(t *testing.T) {
 
 func TestEncodeToAttributes(t *testing.T) {
 	tests := map[string]struct {
-		input     *dhcpv4.DHCPv4
-		namespace string
-		want      []attribute.KeyValue
+		input   *dhcpv4.DHCPv4
+		want    []attribute.KeyValue
+		wantErr error
 	}{
 		"success": {
-			input: &dhcpv4.DHCPv4{Options: dhcpv4.OptionsFromList(dhcpv4.OptMessageType(dhcpv4.MessageTypeDiscover))},
-			want: []attribute.KeyValue{
-				attribute.String("DHCP.msg.Header.yiaddr", "0.0.0.0"),
-				attribute.String("DHCP.msg.Header.siaddr", "0.0.0.0"),
-				attribute.String("DHCP.msg.Header.chaddr", ""),
-				attribute.String("DHCP.msg.Header.file", ""),
-				attribute.String("DHCP.msg.Opt1.SubnetMask", ""),
-				attribute.String("DHCP.msg.Opt3.DefaultGateway", ""),
-				attribute.String("DHCP.msg.Opt6.NameServers", ""),
-				attribute.String("DHCP.msg.Opt12.Hostname", ""),
-				attribute.String("DHCP.msg.Opt15.DomainName", ""),
-				attribute.String("DHCP.msg.Opt28.BroadcastAddress", ""),
-				attribute.String("DHCP.msg.Opt42.NTPServers", ""),
-				attribute.Float64("DHCP.msg.Opt51.LeaseTime", 0),
-				attribute.String("DHCP.msg.Opt53.MessageType", "DISCOVER"),
-				attribute.String("DHCP.msg.Opt54.ServerIdentifier", ""),
-				attribute.String("DHCP.msg.Opt119.DomainSearch", ""),
-			},
+			input: &dhcpv4.DHCPv4{BootFileName: "snp.efi"},
+			want:  []attribute.KeyValue{attribute.String("DHCP.testing.Header.file", "snp.efi")},
 		},
-		"success custom namespace": {
-			input:     &dhcpv4.DHCPv4{Options: dhcpv4.OptionsFromList(dhcpv4.OptMessageType(dhcpv4.MessageTypeDiscover))},
-			namespace: "reply",
-			want: []attribute.KeyValue{
-				attribute.String("DHCP.reply.Header.yiaddr", "0.0.0.0"),
-				attribute.String("DHCP.reply.Header.siaddr", "0.0.0.0"),
-				attribute.String("DHCP.reply.Header.chaddr", ""),
-				attribute.String("DHCP.reply.Header.file", ""),
-				attribute.String("DHCP.reply.Opt1.SubnetMask", ""),
-				attribute.String("DHCP.reply.Opt3.DefaultGateway", ""),
-				attribute.String("DHCP.reply.Opt6.NameServers", ""),
-				attribute.String("DHCP.reply.Opt12.Hostname", ""),
-				attribute.String("DHCP.reply.Opt15.DomainName", ""),
-				attribute.String("DHCP.reply.Opt28.BroadcastAddress", ""),
-				attribute.String("DHCP.reply.Opt42.NTPServers", ""),
-				attribute.Float64("DHCP.reply.Opt51.LeaseTime", 0),
-				attribute.String("DHCP.reply.Opt53.MessageType", "DISCOVER"),
-				attribute.String("DHCP.reply.Opt54.ServerIdentifier", ""),
-				attribute.String("DHCP.reply.Opt119.DomainSearch", ""),
-			},
-		},
-		"fail to parse dhcp packet": {
-			input: nil,
-			want:  []attribute.KeyValue{},
-		},
+		"error": {wantErr: &encodeError{}},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			var pkt []byte
-			if tt.input != nil {
-				pkt = tt.input.ToBytes()
-			}
-			got := attribute.NewSet(encodeToAttributes(pkt, tt.namespace)...)
+			stdr.SetVerbosity(1)
+			s := &Server{Log: stdr.New(log.New(os.Stdout, "", log.Lshortfile))}
+			kvs := s.encodeToAttributes(tt.input, "testing")
+			got := attribute.NewSet(kvs...)
 			want := attribute.NewSet(tt.want...)
 			enc := attribute.DefaultEncoder()
 			if diff := cmp.Diff(got.Encoded(enc), want.Encoded(enc)); diff != "" {
