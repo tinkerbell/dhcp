@@ -164,8 +164,7 @@ func (s *Server) setNetworkBootOpts(ctx context.Context, m *dhcpv4.DHCPv4, n *da
 func (s *Server) bootfileAndNextServer(ctx context.Context, uClass UserClass, opt60, bin string, tftp netaddr.IPPort, ipxe, iscript *url.URL) (string, net.IP) {
 	var nextServer net.IP
 	var bootfile string
-	if s.OTELEnabled {
-		tp := otelhelpers.TraceparentStringFromContext(ctx)
+	if tp := otelhelpers.TraceparentStringFromContext(ctx); s.OTELEnabled && tp != "" {
 		bin = fmt.Sprintf("%s-%v", bin, tp)
 	}
 	// If a machine is in an ipxe boot loop, it is likely to be that we aren't matching on IPXE or Tinkerbell userclass (option 77).
