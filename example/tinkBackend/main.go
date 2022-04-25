@@ -57,7 +57,7 @@ func main() {
 	l.Info("done")
 }
 
-func tinkBackend(ctx context.Context, l logr.Logger, tinkIP string, timeout time.Duration) (*tink.Config, *grpc.ClientConn, error) {
+func tinkBackend(ctx context.Context, l logr.Logger, tinkIP string, timeout time.Duration) (*tink.Backend, *grpc.ClientConn, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	dialOpt, err := LoadTLSFromValue(ctx, fmt.Sprintf("http://%v:42114/cert", tinkIP))
@@ -70,7 +70,7 @@ func tinkBackend(ctx context.Context, l logr.Logger, tinkIP string, timeout time
 		return nil, nil, fmt.Errorf("error connecting to tink server: %w", err)
 	}
 
-	return &tink.Config{Log: l, Client: hardware.NewHardwareServiceClient(client)}, client, nil
+	return &tink.Backend{Log: l, Client: hardware.NewHardwareServiceClient(client)}, client, nil
 }
 
 // LoadTLSFromValue handles reading a cert from an HTTP endpoint and forming a TLS grpc.DialOption.

@@ -85,7 +85,7 @@ func TestRead(t *testing.T) {
 
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			s := &Config{Log: logr.Discard(), Client: tt.mock.getMockedHardwareServiceClient()}
+			s := &Backend{Log: logr.Discard(), Client: tt.mock.getMockedHardwareServiceClient()}
 			d, n, err := s.Read(context.Background(), tt.input)
 			if !errors.Is(err, tt.err) {
 				t.Fatalf("want: %v, type: %[1]T, got: %v, type: %[1]T", tt.err, err)
@@ -175,7 +175,7 @@ func TestTranslate(t *testing.T) {
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			s := &Config{Log: logr.Discard()}
+			s := &Backend{Log: logr.Discard()}
 			gotDHCP, gotNetboot, err := s.translate(tt.inputDHCP, tt.inputNetboot)
 			if !errors.Is(err, tt.err) && !errors.As(err, &tt.err) {
 				t.Fatalf("want: %v, type: %[1]T, got: %v, type: %[1]T", tt.err, err)
