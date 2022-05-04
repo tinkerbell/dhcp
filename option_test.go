@@ -157,6 +157,7 @@ func TestBootfileAndNextServer(t *testing.T) {
 	tests := map[string]struct {
 		server       *Server
 		args         args
+		otelEnabled  bool
 		wantBootFile string
 		wantNextSrv  net.IP
 	}{
@@ -193,7 +194,8 @@ func TestBootfileAndNextServer(t *testing.T) {
 			wantNextSrv:  net.ParseIP("192.168.6.5"),
 		},
 		"success userclass iPXE with otel": {
-			server: &Server{Log: logr.Discard(), OTELEnabled: true},
+			server:      &Server{Log: logr.Discard(), OTELEnabled: true},
+			otelEnabled: true,
 			args: args{
 				mac:    net.HardwareAddr{0x01, 0x02, 0x03, 0x04, 0x05, 0x07},
 				uClass: IPXE,
@@ -215,11 +217,22 @@ func TestBootfileAndNextServer(t *testing.T) {
 			wantBootFile: "unidonly.kpxe",
 			wantNextSrv:  net.ParseIP("192.168.6.5"),
 		},
+		"success otel enabled, no traceparent": {
+			server: &Server{Log: logr.Discard(), OTELEnabled: true},
+			args: args{
+				mac:  net.HardwareAddr{0x01, 0x02, 0x03, 0x04, 0x05, 0x07},
+				bin:  "unidonly.kpxe",
+				tftp: netaddr.IPPortFrom(netaddr.IPv4(192, 168, 6, 5), 69),
+				ipxe: &url.URL{Scheme: "tftp", Host: "192.168.6.5:69"},
+			},
+			wantBootFile: "unidonly.kpxe",
+			wantNextSrv:  net.ParseIP("192.168.6.5"),
+		},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			ctx := context.Background()
-			if tt.server.OTELEnabled {
+			if tt.otelEnabled {
 				// set global propagator to tracecontext (the default is no-op).
 				prop := propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{})
 				otel.SetTextMapPropagator(prop)
