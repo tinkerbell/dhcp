@@ -10,8 +10,8 @@ import (
 	"inet.af/netaddr"
 )
 
-// DHCP holds the headers and options available to be set in a DHCP server response.
-// This is the API between the DHCP server and a backend.
+// DHCP holds the DHCP headers and options to be set in a DHCP handler response.
+// This is the API between a DHCP handler and a backend.
 type DHCP struct {
 	MACAddress       net.HardwareAddr // chaddr DHCP header.
 	IPAddress        netaddr.IP       // yiaddr DHCP header.

@@ -1,4 +1,4 @@
-package dhcp
+package reservation
 
 import (
 	"context"
@@ -19,6 +19,7 @@ import (
 	"github.com/insomniacslk/dhcp/iana"
 	"github.com/insomniacslk/dhcp/rfc1035label"
 	"github.com/tinkerbell/dhcp/data"
+	"github.com/tinkerbell/dhcp/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"golang.org/x/net/nettest"
 	"inet.af/netaddr"
@@ -62,17 +63,16 @@ func (m *mockBackend) Read(context.Context, net.HardwareAddr) (*data.DHCP, *data
 	return d, n, m.err
 }
 
-func TestHandleFunc(t *testing.T) {
+func TestHandle(t *testing.T) {
 	tests := map[string]struct {
-		server  Server
+		server  Handler
 		req     *dhcpv4.DHCPv4
 		want    *dhcpv4.DHCPv4
 		wantErr error
 		nilPeer bool
 	}{
 		"success discover message type": {
-			server: Server{
-				ctx:     context.Background(),
+			server: Handler{
 				Backend: &mockBackend{},
 				IPAddr:  netaddr.IPv4(127, 0, 0, 1),
 			},
@@ -106,8 +106,7 @@ func TestHandleFunc(t *testing.T) {
 			},
 		},
 		"failure discover message type": {
-			server: Server{
-				ctx:     context.Background(),
+			server: Handler{
 				Backend: &mockBackend{err: errBadBackend},
 				IPAddr:  netaddr.IPv4(127, 0, 0, 1),
 			},
@@ -121,8 +120,7 @@ func TestHandleFunc(t *testing.T) {
 			wantErr: errBadBackend,
 		},
 		"success request message type": {
-			server: Server{
-				ctx:     context.Background(),
+			server: Handler{
 				Backend: &mockBackend{},
 				IPAddr:  netaddr.IPv4(127, 0, 0, 1),
 			},
@@ -170,8 +168,7 @@ func TestHandleFunc(t *testing.T) {
 			},
 		},
 		"failure request message type": {
-			server: Server{
-				ctx:     context.Background(),
+			server: Handler{
 				Backend: &mockBackend{err: errBadBackend},
 				IPAddr:  netaddr.IPv4(127, 0, 0, 1),
 			},
@@ -185,8 +182,7 @@ func TestHandleFunc(t *testing.T) {
 			wantErr: errBadBackend,
 		},
 		"request release type": {
-			server: Server{
-				ctx:     context.Background(),
+			server: Handler{
 				Backend: &mockBackend{err: errBadBackend},
 				IPAddr:  netaddr.IPv4(127, 0, 0, 1),
 			},
@@ -200,8 +196,7 @@ func TestHandleFunc(t *testing.T) {
 			wantErr: errBadBackend,
 		},
 		"unknown message type": {
-			server: Server{
-				ctx:     context.Background(),
+			server: Handler{
 				Backend: &mockBackend{err: errBadBackend},
 				IPAddr:  netaddr.IPv4(127, 0, 0, 1),
 			},
@@ -215,8 +210,7 @@ func TestHandleFunc(t *testing.T) {
 			wantErr: errBadBackend,
 		},
 		"fail WriteTo": {
-			server: Server{
-				ctx:     context.Background(),
+			server: Handler{
 				Backend: &mockBackend{},
 			},
 			req: &dhcpv4.DHCPv4{
@@ -229,11 +223,14 @@ func TestHandleFunc(t *testing.T) {
 			wantErr: errBadBackend,
 			nilPeer: true,
 		},
+		"nil incoming packet": {
+			want:    nil,
+			wantErr: errBadBackend,
+		},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			s := tt.server
-			s.Log = stdr.New(log.New(os.Stdout, "", log.Lshortfile))
 			conn, err := nettest.NewLocalPacketListener("udp")
 			if err != nil {
 				t.Fatal("1", err)
@@ -249,7 +246,7 @@ func TestHandleFunc(t *testing.T) {
 			if tt.nilPeer {
 				peer = nil
 			}
-			s.handleFunc(conn, peer, tt.req)
+			s.Handle(conn, peer, tt.req)
 
 			msg, err := client(pc)
 			if !errors.Is(err, tt.wantErr) {
@@ -321,7 +318,7 @@ func TestUpdateMsg(t *testing.T) {
 					dhcpv4.OptClassIdentifier("HTTPClient"),
 					dhcpv4.OptGeneric(dhcpv4.OptionVendorSpecificInformation, dhcpv4.Options{
 						6:  []byte{8},
-						69: binaryTpFromContext(context.Background()),
+						69: otel.TraceparentFromContext(context.Background()),
 					}.ToBytes()),
 				),
 			},
@@ -329,15 +326,17 @@ func TestUpdateMsg(t *testing.T) {
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			s := &Server{
-				Log:            stdr.New(log.New(os.Stdout, "", log.Lshortfile)),
-				IPAddr:         netaddr.IPv4(127, 0, 0, 1),
-				NetbootEnabled: true,
+			s := &Handler{
+				Log:    stdr.New(log.New(os.Stdout, "", log.Lshortfile)),
+				IPAddr: netaddr.IPv4(127, 0, 0, 1),
+				Netboot: Netboot{
+					Enabled: true,
+				},
 				Backend: &mockBackend{
 					allowNetboot: true,
 					ipxeScript:   &url.URL{Scheme: "http", Host: "localhost:8181", Path: "auto.ipxe"},
 				},
-				Listener: netaddr.IPPortFrom(netaddr.IPv4(127, 0, 0, 1), 67),
+				// Listener: netaddr.IPPortFrom(netaddr.IPv4(127, 0, 0, 1), 67),
 			}
 			got := s.updateMsg(context.Background(), tt.args.m, tt.args.data, tt.args.netboot, tt.args.msg)
 			if diff := cmp.Diff(got, tt.want, cmpopts.IgnoreUnexported(dhcpv4.DHCPv4{})); diff != "" {
@@ -345,6 +344,13 @@ func TestUpdateMsg(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestOne(t *testing.T) {
+	t.Skip()
+	h := &Handler{}
+	_, _, err := h.readBackend(context.Background(), nil)
+	t.Fatal(err)
 }
 
 func TestReadBackend(t *testing.T) {
@@ -390,22 +396,24 @@ func TestReadBackend(t *testing.T) {
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			s := &Server{
-				Log:            stdr.New(log.New(os.Stdout, "", log.Lshortfile)),
-				IPAddr:         netaddr.IPv4(127, 0, 0, 1),
-				NetbootEnabled: true,
+			s := &Handler{
+				Log:    stdr.New(log.New(os.Stdout, "", log.Lshortfile)),
+				IPAddr: netaddr.IPv4(127, 0, 0, 1),
+				Netboot: Netboot{
+					Enabled: true,
+				},
 				Backend: &mockBackend{
 					err:          tt.wantErr,
 					allowNetboot: true,
 					ipxeScript:   &url.URL{Scheme: "http", Host: "localhost:8181", Path: "auto.ipxe"},
 				},
-				Listener: netaddr.IPPortFrom(netaddr.IPv4(127, 0, 0, 1), 67),
+				// Listener: netaddr.IPPortFrom(netaddr.IPv4(127, 0, 0, 1), 67),
 			}
 			netaddrComparer := cmp.Comparer(func(x, y netaddr.IP) bool {
 				i := x.Compare(y)
 				return i == 0
 			})
-			gotDHCP, gotNetboot, err := s.readBackend(context.Background(), tt.input)
+			gotDHCP, gotNetboot, err := s.readBackend(context.Background(), tt.input.ClientHWAddr)
 			if !errors.Is(err, tt.wantErr) {
 				t.Fatalf("gotErr: %v, wantErr: %v", err, tt.wantErr)
 			}
@@ -463,7 +471,7 @@ func TestIsNetbootClient(t *testing.T) {
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			s := &Server{Log: logr.Discard()}
+			s := &Handler{Log: logr.Discard()}
 			if s.isNetbootClient(tt.input) != tt.want {
 				t.Errorf("isNetbootClient() = %v, want %v", !tt.want, tt.want)
 			}
@@ -481,12 +489,12 @@ func TestEncodeToAttributes(t *testing.T) {
 			input: &dhcpv4.DHCPv4{BootFileName: "snp.efi"},
 			want:  []attribute.KeyValue{attribute.String("DHCP.testing.Header.file", "snp.efi")},
 		},
-		"error": {wantErr: &encodeError{}},
+		"error": {},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			stdr.SetVerbosity(1)
-			s := &Server{Log: stdr.New(log.New(os.Stdout, "", log.Lshortfile))}
+			s := &Handler{Log: stdr.New(log.New(os.Stdout, "", log.Lshortfile))}
 			kvs := s.encodeToAttributes(tt.input, "testing")
 			got := attribute.NewSet(kvs...)
 			want := attribute.NewSet(tt.want...)

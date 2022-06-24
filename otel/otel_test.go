@@ -1,8 +1,8 @@
-package dhcp
+package otel
 
 import (
-	"errors"
-	"fmt"
+	"bytes"
+	"context"
 	"log"
 	"net"
 	"os"
@@ -14,15 +14,16 @@ import (
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/insomniacslk/dhcp/rfc1035label"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func TestEncodeError(t *testing.T) {
 	tests := map[string]struct {
-		input *encodeError
+		input *errOptNotFound
 		want  string
 	}{
-		"success":           {input: &encodeError{err: fmt.Errorf("test error")}, want: "test error"},
-		"success nil error": {input: &encodeError{}, want: ""},
+		"success":           {input: &errOptNotFound{optName: "opt1"}, want: "\"opt1\" not found in DHCP packet"},
+		"success nil error": {input: &errOptNotFound{}, want: "\"\" not found in DHCP packet"},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -46,17 +47,17 @@ func TestSetOpt1(t *testing.T) {
 			)},
 			want: []attribute.KeyValue{attribute.String("DHCP.testing.Opt1.SubnetMask", "255.255.255.0")},
 		},
-		"error": {wantErr: &encodeError{}},
+		"error": {wantErr: &errOptNotFound{}},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			a := encoder{log: stdr.New(log.New(os.Stdout, "", log.Lshortfile))}
+			a := Encoder{Log: stdr.New(log.New(os.Stdout, "", log.Lshortfile))}
 			stdr.SetVerbosity(1)
-			err := a.encodeOpt1(tt.input, "testing")
-			if !errors.Is(err, tt.wantErr) {
+			err := a.EncodeOpt1(tt.input, "testing")
+			if tt.wantErr != nil && !OptNotFound(err) {
 				t.Fatalf("setOpt1() error (type: %T) = %[1]v, wantErr (type: %T) %[2]v", err, tt.wantErr)
 			}
-			got := attribute.NewSet(a.attributes...)
+			got := attribute.NewSet(a.Attributes...)
 			want := attribute.NewSet(tt.want...)
 			enc := attribute.DefaultEncoder()
 			if diff := cmp.Diff(got.Encoded(enc), want.Encoded(enc)); diff != "" {
@@ -80,17 +81,17 @@ func TestSetOpt3(t *testing.T) {
 			)},
 			want: []attribute.KeyValue{attribute.String("DHCP.testing.Opt3.DefaultGateway", "192.168.1.1")},
 		},
-		"error": {wantErr: &encodeError{}},
+		"error": {wantErr: &errOptNotFound{}},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			a := encoder{log: stdr.New(log.New(os.Stdout, "", log.Lshortfile))}
+			a := Encoder{Log: stdr.New(log.New(os.Stdout, "", log.Lshortfile))}
 			stdr.SetVerbosity(1)
-			err := a.encodeOpt3(tt.input, "testing")
-			if !errors.Is(err, tt.wantErr) {
+			err := a.EncodeOpt3(tt.input, "testing")
+			if tt.wantErr != nil && !OptNotFound(err) {
 				t.Fatalf("setOpt13() error (type: %T) = %[1]v, wantErr (type: %T) %[2]v", err, tt.wantErr)
 			}
-			got := attribute.NewSet(a.attributes...)
+			got := attribute.NewSet(a.Attributes...)
 			want := attribute.NewSet(tt.want...)
 			enc := attribute.DefaultEncoder()
 			if diff := cmp.Diff(got.Encoded(enc), want.Encoded(enc)); diff != "" {
@@ -114,17 +115,17 @@ func TestSetOpt6(t *testing.T) {
 			)},
 			want: []attribute.KeyValue{attribute.String("DHCP.testing.Opt6.NameServers", "1.1.1.1")},
 		},
-		"error": {wantErr: &encodeError{}},
+		"error": {wantErr: &errOptNotFound{}},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			a := encoder{log: stdr.New(log.New(os.Stdout, "", log.Lshortfile))}
+			a := Encoder{Log: stdr.New(log.New(os.Stdout, "", log.Lshortfile))}
 			stdr.SetVerbosity(1)
-			err := a.encodeOpt6(tt.input, "testing")
-			if !errors.Is(err, tt.wantErr) {
+			err := a.EncodeOpt6(tt.input, "testing")
+			if tt.wantErr != nil && !OptNotFound(err) {
 				t.Fatalf("setOpt6() error (type: %T) = %[1]v, wantErr (type: %T) %[2]v", err, tt.wantErr)
 			}
-			got := attribute.NewSet(a.attributes...)
+			got := attribute.NewSet(a.Attributes...)
 			want := attribute.NewSet(tt.want...)
 			enc := attribute.DefaultEncoder()
 			if diff := cmp.Diff(got.Encoded(enc), want.Encoded(enc)); diff != "" {
@@ -148,17 +149,17 @@ func TestSetOpt12(t *testing.T) {
 			)},
 			want: []attribute.KeyValue{attribute.String("DHCP.testing.Opt12.Hostname", "test-host")},
 		},
-		"error": {wantErr: &encodeError{}},
+		"error": {wantErr: &errOptNotFound{}},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			a := encoder{log: stdr.New(log.New(os.Stdout, "", log.Lshortfile))}
+			a := Encoder{Log: stdr.New(log.New(os.Stdout, "", log.Lshortfile))}
 			stdr.SetVerbosity(1)
-			err := a.encodeOpt12(tt.input, "testing")
-			if !errors.Is(err, tt.wantErr) {
+			err := a.EncodeOpt12(tt.input, "testing")
+			if tt.wantErr != nil && !OptNotFound(err) {
 				t.Fatalf("setOpt12() error (type: %T) = %[1]v, wantErr (type: %T) %[2]v", err, tt.wantErr)
 			}
-			got := attribute.NewSet(a.attributes...)
+			got := attribute.NewSet(a.Attributes...)
 			want := attribute.NewSet(tt.want...)
 			enc := attribute.DefaultEncoder()
 			if diff := cmp.Diff(got.Encoded(enc), want.Encoded(enc)); diff != "" {
@@ -182,17 +183,17 @@ func TestSetOpt15(t *testing.T) {
 			)},
 			want: []attribute.KeyValue{attribute.String("DHCP.testing.Opt15.DomainName", "example.com")},
 		},
-		"error": {wantErr: &encodeError{}},
+		"error": {wantErr: &errOptNotFound{}},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			a := encoder{log: stdr.New(log.New(os.Stdout, "", log.Lshortfile))}
+			a := Encoder{Log: stdr.New(log.New(os.Stdout, "", log.Lshortfile))}
 			stdr.SetVerbosity(1)
-			err := a.encodeOpt15(tt.input, "testing")
-			if !errors.Is(err, tt.wantErr) {
+			err := a.EncodeOpt15(tt.input, "testing")
+			if tt.wantErr != nil && !OptNotFound(err) {
 				t.Fatalf("setOpt15() error (type: %T) = %[1]v, wantErr (type: %T) %[2]v", err, tt.wantErr)
 			}
-			got := attribute.NewSet(a.attributes...)
+			got := attribute.NewSet(a.Attributes...)
 			want := attribute.NewSet(tt.want...)
 			enc := attribute.DefaultEncoder()
 			if diff := cmp.Diff(got.Encoded(enc), want.Encoded(enc)); diff != "" {
@@ -216,17 +217,17 @@ func TestSetOpt28(t *testing.T) {
 			)},
 			want: []attribute.KeyValue{attribute.String("DHCP.testing.Opt28.BroadcastAddress", "192.168.1.255")},
 		},
-		"error": {wantErr: &encodeError{}},
+		"error": {wantErr: &errOptNotFound{}},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			a := encoder{log: stdr.New(log.New(os.Stdout, "", log.Lshortfile))}
+			a := Encoder{Log: stdr.New(log.New(os.Stdout, "", log.Lshortfile))}
 			stdr.SetVerbosity(1)
-			err := a.setOpt28(tt.input, "testing")
-			if !errors.Is(err, tt.wantErr) {
+			err := a.EncodeOpt28(tt.input, "testing")
+			if tt.wantErr != nil && !OptNotFound(err) {
 				t.Fatalf("setOpt28() error (type: %T) = %[1]v, wantErr (type: %T) %[2]v", err, tt.wantErr)
 			}
-			got := attribute.NewSet(a.attributes...)
+			got := attribute.NewSet(a.Attributes...)
 			want := attribute.NewSet(tt.want...)
 			enc := attribute.DefaultEncoder()
 			if diff := cmp.Diff(got.Encoded(enc), want.Encoded(enc)); diff != "" {
@@ -250,17 +251,17 @@ func TestSetOpt42(t *testing.T) {
 			)},
 			want: []attribute.KeyValue{attribute.String("DHCP.testing.Opt42.NTPServers", "132.163.96.2")},
 		},
-		"error": {wantErr: &encodeError{}},
+		"error": {wantErr: &errOptNotFound{}},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			a := encoder{log: stdr.New(log.New(os.Stdout, "", log.Lshortfile))}
+			a := Encoder{Log: stdr.New(log.New(os.Stdout, "", log.Lshortfile))}
 			stdr.SetVerbosity(1)
-			err := a.encodeOpt42(tt.input, "testing")
-			if !errors.Is(err, tt.wantErr) {
+			err := a.EncodeOpt42(tt.input, "testing")
+			if tt.wantErr != nil && !OptNotFound(err) {
 				t.Fatalf("setOpt42() error (type: %T) = %[1]v, wantErr (type: %T) %[2]v", err, tt.wantErr)
 			}
-			got := attribute.NewSet(a.attributes...)
+			got := attribute.NewSet(a.Attributes...)
 			want := attribute.NewSet(tt.want...)
 			enc := attribute.DefaultEncoder()
 			if diff := cmp.Diff(got.Encoded(enc), want.Encoded(enc)); diff != "" {
@@ -284,17 +285,17 @@ func TestSetOpt51(t *testing.T) {
 			)},
 			want: []attribute.KeyValue{attribute.String("DHCP.testing.Opt51.LeaseTime", "60")},
 		},
-		"error": {wantErr: &encodeError{}},
+		"error": {wantErr: &errOptNotFound{}},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			a := encoder{log: stdr.New(log.New(os.Stdout, "", log.Lshortfile))}
+			a := Encoder{Log: stdr.New(log.New(os.Stdout, "", log.Lshortfile))}
 			stdr.SetVerbosity(1)
-			err := a.encodeOpt51(tt.input, "testing")
-			if !errors.Is(err, tt.wantErr) {
+			err := a.EncodeOpt51(tt.input, "testing")
+			if tt.wantErr != nil && !OptNotFound(err) {
 				t.Fatalf("setOpt51() error (type: %T) = %[1]v, wantErr (type: %T) %[2]v", err, tt.wantErr)
 			}
-			got := attribute.NewSet(a.attributes...)
+			got := attribute.NewSet(a.Attributes...)
 			want := attribute.NewSet(tt.want...)
 			enc := attribute.DefaultEncoder()
 			if diff := cmp.Diff(got.Encoded(enc), want.Encoded(enc)); diff != "" {
@@ -318,17 +319,17 @@ func TestSetOpt53(t *testing.T) {
 			)},
 			want: []attribute.KeyValue{attribute.String("DHCP.testing.Opt53.MessageType", "OFFER")},
 		},
-		"error": {wantErr: &encodeError{}},
+		"error": {wantErr: &errOptNotFound{}},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			a := encoder{log: stdr.New(log.New(os.Stdout, "", log.Lshortfile))}
+			a := Encoder{Log: stdr.New(log.New(os.Stdout, "", log.Lshortfile))}
 			stdr.SetVerbosity(1)
-			err := a.encodeOpt53(tt.input, "testing")
-			if !errors.Is(err, tt.wantErr) {
+			err := a.EncodeOpt53(tt.input, "testing")
+			if tt.wantErr != nil && !OptNotFound(err) {
 				t.Fatalf("setOpt53() error (type: %T) = %[1]v, wantErr (type: %T) %[2]v", err, tt.wantErr)
 			}
-			got := attribute.NewSet(a.attributes...)
+			got := attribute.NewSet(a.Attributes...)
 			want := attribute.NewSet(tt.want...)
 			enc := attribute.DefaultEncoder()
 			if diff := cmp.Diff(got.Encoded(enc), want.Encoded(enc)); diff != "" {
@@ -352,17 +353,17 @@ func TestSetOpt54(t *testing.T) {
 			)},
 			want: []attribute.KeyValue{attribute.String("DHCP.testing.Opt54.ServerIdentifier", "127.0.0.1")},
 		},
-		"error": {wantErr: &encodeError{}},
+		"error": {wantErr: &errOptNotFound{}},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			a := encoder{log: stdr.New(log.New(os.Stdout, "", log.Lshortfile))}
+			a := Encoder{Log: stdr.New(log.New(os.Stdout, "", log.Lshortfile))}
 			stdr.SetVerbosity(1)
-			err := a.encodeOpt54(tt.input, "testing")
-			if !errors.Is(err, tt.wantErr) {
+			err := a.EncodeOpt54(tt.input, "testing")
+			if tt.wantErr != nil && !OptNotFound(err) {
 				t.Fatalf("setOpt54() error (type: %T) = %[1]v, wantErr (type: %T) %[2]v", err, tt.wantErr)
 			}
-			got := attribute.NewSet(a.attributes...)
+			got := attribute.NewSet(a.Attributes...)
 			want := attribute.NewSet(tt.want...)
 			enc := attribute.DefaultEncoder()
 			if diff := cmp.Diff(got.Encoded(enc), want.Encoded(enc)); diff != "" {
@@ -386,17 +387,17 @@ func TestSetOpt119(t *testing.T) {
 			)},
 			want: []attribute.KeyValue{attribute.String("DHCP.testing.Opt119.DomainSearch", "mydomain.com")},
 		},
-		"error": {wantErr: &encodeError{}},
+		"error": {wantErr: &errOptNotFound{}},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			a := encoder{log: stdr.New(log.New(os.Stdout, "", log.Lshortfile))}
+			a := Encoder{Log: stdr.New(log.New(os.Stdout, "", log.Lshortfile))}
 			stdr.SetVerbosity(1)
-			err := a.encodeOpt119(tt.input, "testing")
-			if !errors.Is(err, tt.wantErr) {
+			err := a.EncodeOpt119(tt.input, "testing")
+			if tt.wantErr != nil && !OptNotFound(err) {
 				t.Fatalf("setOpt119() error (type: %T) = %[1]v, wantErr (type: %T) %[2]v", err, tt.wantErr)
 			}
-			got := attribute.NewSet(a.attributes...)
+			got := attribute.NewSet(a.Attributes...)
 			want := attribute.NewSet(tt.want...)
 			enc := attribute.DefaultEncoder()
 			if diff := cmp.Diff(got.Encoded(enc), want.Encoded(enc)); diff != "" {
@@ -418,17 +419,17 @@ func TestSetHeaderYIADDR(t *testing.T) {
 			input: &dhcpv4.DHCPv4{YourIPAddr: []byte{192, 168, 2, 100}},
 			want:  []attribute.KeyValue{attribute.String("DHCP.testing.Header.yiaddr", "192.168.2.100")},
 		},
-		"error": {wantErr: &encodeError{}},
+		"error": {wantErr: &errOptNotFound{}},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			a := encoder{log: stdr.New(log.New(os.Stdout, "", log.Lshortfile))}
+			a := Encoder{Log: stdr.New(log.New(os.Stdout, "", log.Lshortfile))}
 			stdr.SetVerbosity(1)
-			err := a.encodeYIADDR(tt.input, "testing")
-			if !errors.Is(err, tt.wantErr) {
+			err := a.EncodeYIADDR(tt.input, "testing")
+			if tt.wantErr != nil && !OptNotFound(err) {
 				t.Fatalf("setHeaderYIADDR() error (type: %T) = %[1]v, wantErr (type: %T) %[2]v", err, tt.wantErr)
 			}
-			got := attribute.NewSet(a.attributes...)
+			got := attribute.NewSet(a.Attributes...)
 			want := attribute.NewSet(tt.want...)
 			enc := attribute.DefaultEncoder()
 			if diff := cmp.Diff(got.Encoded(enc), want.Encoded(enc)); diff != "" {
@@ -450,17 +451,17 @@ func TestSetHeaderSIADDR(t *testing.T) {
 			input: &dhcpv4.DHCPv4{ServerIPAddr: []byte{127, 0, 0, 1}},
 			want:  []attribute.KeyValue{attribute.String("DHCP.testing.Header.siaddr", "127.0.0.1")},
 		},
-		"error": {wantErr: &encodeError{}},
+		"error": {wantErr: &errOptNotFound{}},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			a := encoder{log: stdr.New(log.New(os.Stdout, "", log.Lshortfile))}
+			a := Encoder{Log: stdr.New(log.New(os.Stdout, "", log.Lshortfile))}
 			stdr.SetVerbosity(1)
-			err := a.encodeSIADDR(tt.input, "testing")
-			if !errors.Is(err, tt.wantErr) {
+			err := a.EncodeSIADDR(tt.input, "testing")
+			if tt.wantErr != nil && !OptNotFound(err) {
 				t.Fatalf("setHeaderSIADDR() error (type: %T) = %[1]v, wantErr (type: %T) %[2]v", err, tt.wantErr)
 			}
-			got := attribute.NewSet(a.attributes...)
+			got := attribute.NewSet(a.Attributes...)
 			want := attribute.NewSet(tt.want...)
 			enc := attribute.DefaultEncoder()
 			if diff := cmp.Diff(got.Encoded(enc), want.Encoded(enc)); diff != "" {
@@ -482,17 +483,17 @@ func TestSetHeaderCHADDR(t *testing.T) {
 			input: &dhcpv4.DHCPv4{ClientHWAddr: []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}},
 			want:  []attribute.KeyValue{attribute.String("DHCP.testing.Header.chaddr", "01:02:03:04:05:06")},
 		},
-		"error": {wantErr: &encodeError{}},
+		"error": {wantErr: &errOptNotFound{}},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			a := encoder{log: stdr.New(log.New(os.Stdout, "", log.Lshortfile))}
+			a := Encoder{Log: stdr.New(log.New(os.Stdout, "", log.Lshortfile))}
 			stdr.SetVerbosity(1)
-			err := a.encodeCHADDR(tt.input, "testing")
-			if !errors.Is(err, tt.wantErr) {
+			err := a.EncodeCHADDR(tt.input, "testing")
+			if tt.wantErr != nil && !OptNotFound(err) {
 				t.Fatalf("setHeaderCHADDR() error (type: %T) = %[1]v, wantErr (type: %T) %[2]v", err, tt.wantErr)
 			}
-			got := attribute.NewSet(a.attributes...)
+			got := attribute.NewSet(a.Attributes...)
 			want := attribute.NewSet(tt.want...)
 			enc := attribute.DefaultEncoder()
 			if diff := cmp.Diff(got.Encoded(enc), want.Encoded(enc)); diff != "" {
@@ -514,17 +515,17 @@ func TestSetHeaderFILE(t *testing.T) {
 			input: &dhcpv4.DHCPv4{BootFileName: "snp.efi"},
 			want:  []attribute.KeyValue{attribute.String("DHCP.testing.Header.file", "snp.efi")},
 		},
-		"error": {wantErr: &encodeError{}},
+		"error": {wantErr: &errOptNotFound{}},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			a := encoder{log: stdr.New(log.New(os.Stdout, "", log.Lshortfile))}
+			a := Encoder{Log: stdr.New(log.New(os.Stdout, "", log.Lshortfile))}
 			stdr.SetVerbosity(1)
-			err := a.encodeFILE(tt.input, "testing")
-			if !errors.Is(err, tt.wantErr) {
+			err := a.EncodeFILE(tt.input, "testing")
+			if tt.wantErr != nil && !OptNotFound(err) {
 				t.Fatalf("setHeaderFILE() error (type: %T) = %[1]v, wantErr (type: %T) %[2]v", err, tt.wantErr)
 			}
-			got := attribute.NewSet(a.attributes...)
+			got := attribute.NewSet(a.Attributes...)
 			want := attribute.NewSet(tt.want...)
 			enc := attribute.DefaultEncoder()
 			if diff := cmp.Diff(got.Encoded(enc), want.Encoded(enc)); diff != "" {
@@ -533,5 +534,20 @@ func TestSetHeaderFILE(t *testing.T) {
 				t.Fatal(diff)
 			}
 		})
+	}
+}
+
+func TestTraceparentFromContext(t *testing.T) {
+	want := []byte{0, 1, 2, 3, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5, 6, 7, 8, 0, 0, 0, 0, 1}
+	sc := trace.NewSpanContext(trace.SpanContextConfig{
+		TraceID:    trace.TraceID{0x01, 0x02, 0x03, 0x04},
+		SpanID:     trace.SpanID{0x05, 0x06, 0x07, 0x08},
+		TraceFlags: trace.TraceFlags(1),
+	})
+	rmSpan := trace.ContextWithRemoteSpanContext(context.Background(), sc)
+
+	got := TraceparentFromContext(rmSpan)
+	if !bytes.Equal(got, want) {
+		t.Errorf("binaryTpFromContext() = %v, want %v", got, want)
 	}
 }
