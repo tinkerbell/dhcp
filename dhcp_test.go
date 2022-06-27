@@ -53,15 +53,15 @@ func (m *mock) Handle(conn net.PacketConn, peer net.Addr, pkt *dhcpv4.DHCPv4) {
 	m.Log.Info("sent reply")
 }
 
-func (p *mock) setOpts() []dhcpv4.Modifier {
+func (m *mock) setOpts() []dhcpv4.Modifier {
 	mods := []dhcpv4.Modifier{
-		dhcpv4.WithGeneric(dhcpv4.OptionServerIdentifier, p.ServerIP),
-		dhcpv4.WithServerIP(p.ServerIP),
-		dhcpv4.WithLeaseTime(p.LeaseTime),
-		dhcpv4.WithYourIP(p.YourIP),
-		dhcpv4.WithDNS(p.NameServers...),
-		dhcpv4.WithNetmask(p.SubnetMask),
-		dhcpv4.WithRouter(p.Router),
+		dhcpv4.WithGeneric(dhcpv4.OptionServerIdentifier, m.ServerIP),
+		dhcpv4.WithServerIP(m.ServerIP),
+		dhcpv4.WithLeaseTime(m.LeaseTime),
+		dhcpv4.WithYourIP(m.YourIP),
+		dhcpv4.WithDNS(m.NameServers...),
+		dhcpv4.WithNetmask(m.SubnetMask),
+		dhcpv4.WithRouter(m.Router),
 	}
 
 	return mods

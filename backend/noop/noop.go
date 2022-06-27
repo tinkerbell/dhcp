@@ -1,3 +1,4 @@
+// Package noop is a backend handler that does nothing.
 package noop
 
 import (

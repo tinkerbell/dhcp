@@ -19,11 +19,11 @@ import (
 
 func TestEncodeError(t *testing.T) {
 	tests := map[string]struct {
-		input *errOptNotFound
+		input *optNotFoundError
 		want  string
 	}{
-		"success":           {input: &errOptNotFound{optName: "opt1"}, want: "\"opt1\" not found in DHCP packet"},
-		"success nil error": {input: &errOptNotFound{}, want: "\"\" not found in DHCP packet"},
+		"success":           {input: &optNotFoundError{optName: "opt1"}, want: "\"opt1\" not found in DHCP packet"},
+		"success nil error": {input: &optNotFoundError{}, want: "\"\" not found in DHCP packet"},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -47,7 +47,7 @@ func TestSetOpt1(t *testing.T) {
 			)},
 			want: []attribute.KeyValue{attribute.String("DHCP.testing.Opt1.SubnetMask", "255.255.255.0")},
 		},
-		"error": {wantErr: &errOptNotFound{}},
+		"error": {wantErr: &optNotFoundError{}},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -81,7 +81,7 @@ func TestSetOpt3(t *testing.T) {
 			)},
 			want: []attribute.KeyValue{attribute.String("DHCP.testing.Opt3.DefaultGateway", "192.168.1.1")},
 		},
-		"error": {wantErr: &errOptNotFound{}},
+		"error": {wantErr: &optNotFoundError{}},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -115,7 +115,7 @@ func TestSetOpt6(t *testing.T) {
 			)},
 			want: []attribute.KeyValue{attribute.String("DHCP.testing.Opt6.NameServers", "1.1.1.1")},
 		},
-		"error": {wantErr: &errOptNotFound{}},
+		"error": {wantErr: &optNotFoundError{}},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -149,7 +149,7 @@ func TestSetOpt12(t *testing.T) {
 			)},
 			want: []attribute.KeyValue{attribute.String("DHCP.testing.Opt12.Hostname", "test-host")},
 		},
-		"error": {wantErr: &errOptNotFound{}},
+		"error": {wantErr: &optNotFoundError{}},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -183,7 +183,7 @@ func TestSetOpt15(t *testing.T) {
 			)},
 			want: []attribute.KeyValue{attribute.String("DHCP.testing.Opt15.DomainName", "example.com")},
 		},
-		"error": {wantErr: &errOptNotFound{}},
+		"error": {wantErr: &optNotFoundError{}},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -217,7 +217,7 @@ func TestSetOpt28(t *testing.T) {
 			)},
 			want: []attribute.KeyValue{attribute.String("DHCP.testing.Opt28.BroadcastAddress", "192.168.1.255")},
 		},
-		"error": {wantErr: &errOptNotFound{}},
+		"error": {wantErr: &optNotFoundError{}},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -251,7 +251,7 @@ func TestSetOpt42(t *testing.T) {
 			)},
 			want: []attribute.KeyValue{attribute.String("DHCP.testing.Opt42.NTPServers", "132.163.96.2")},
 		},
-		"error": {wantErr: &errOptNotFound{}},
+		"error": {wantErr: &optNotFoundError{}},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -285,7 +285,7 @@ func TestSetOpt51(t *testing.T) {
 			)},
 			want: []attribute.KeyValue{attribute.String("DHCP.testing.Opt51.LeaseTime", "60")},
 		},
-		"error": {wantErr: &errOptNotFound{}},
+		"error": {wantErr: &optNotFoundError{}},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -319,7 +319,7 @@ func TestSetOpt53(t *testing.T) {
 			)},
 			want: []attribute.KeyValue{attribute.String("DHCP.testing.Opt53.MessageType", "OFFER")},
 		},
-		"error": {wantErr: &errOptNotFound{}},
+		"error": {wantErr: &optNotFoundError{}},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -353,7 +353,7 @@ func TestSetOpt54(t *testing.T) {
 			)},
 			want: []attribute.KeyValue{attribute.String("DHCP.testing.Opt54.ServerIdentifier", "127.0.0.1")},
 		},
-		"error": {wantErr: &errOptNotFound{}},
+		"error": {wantErr: &optNotFoundError{}},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -387,7 +387,7 @@ func TestSetOpt119(t *testing.T) {
 			)},
 			want: []attribute.KeyValue{attribute.String("DHCP.testing.Opt119.DomainSearch", "mydomain.com")},
 		},
-		"error": {wantErr: &errOptNotFound{}},
+		"error": {wantErr: &optNotFoundError{}},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -419,7 +419,7 @@ func TestSetHeaderYIADDR(t *testing.T) {
 			input: &dhcpv4.DHCPv4{YourIPAddr: []byte{192, 168, 2, 100}},
 			want:  []attribute.KeyValue{attribute.String("DHCP.testing.Header.yiaddr", "192.168.2.100")},
 		},
-		"error": {wantErr: &errOptNotFound{}},
+		"error": {wantErr: &optNotFoundError{}},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -451,7 +451,7 @@ func TestSetHeaderSIADDR(t *testing.T) {
 			input: &dhcpv4.DHCPv4{ServerIPAddr: []byte{127, 0, 0, 1}},
 			want:  []attribute.KeyValue{attribute.String("DHCP.testing.Header.siaddr", "127.0.0.1")},
 		},
-		"error": {wantErr: &errOptNotFound{}},
+		"error": {wantErr: &optNotFoundError{}},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -483,7 +483,7 @@ func TestSetHeaderCHADDR(t *testing.T) {
 			input: &dhcpv4.DHCPv4{ClientHWAddr: []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}},
 			want:  []attribute.KeyValue{attribute.String("DHCP.testing.Header.chaddr", "01:02:03:04:05:06")},
 		},
-		"error": {wantErr: &errOptNotFound{}},
+		"error": {wantErr: &optNotFoundError{}},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -515,7 +515,7 @@ func TestSetHeaderFILE(t *testing.T) {
 			input: &dhcpv4.DHCPv4{BootFileName: "snp.efi"},
 			want:  []attribute.KeyValue{attribute.String("DHCP.testing.Header.file", "snp.efi")},
 		},
-		"error": {wantErr: &errOptNotFound{}},
+		"error": {wantErr: &optNotFoundError{}},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {

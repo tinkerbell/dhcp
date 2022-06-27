@@ -1,3 +1,4 @@
+// Package otel handles translating DHCP headers and options to otel key/value attributes.
 package otel
 
 import (
@@ -14,25 +15,26 @@ import (
 
 const keyNamespace = "DHCP"
 
+// Encoder holds the otel key/value attributes.
 type Encoder struct {
 	Log        logr.Logger
 	Attributes []attribute.KeyValue
 }
 
-type encodeError struct {
+/*type encodeError struct {
 	key string
 	err error
-}
+}*/
 
-type errOptNotFound struct {
+type optNotFoundError struct {
 	optName string
 }
 
-func (e *errOptNotFound) Error() string {
+func (e *optNotFoundError) Error() string {
 	return fmt.Sprintf("%q not found in DHCP packet", e.optName)
 }
 
-func (e *errOptNotFound) found() bool {
+func (e *optNotFoundError) found() bool {
 	return true
 }
 
@@ -65,6 +67,8 @@ func (e *Encoder) Encode(d *dhcpv4.DHCPv4, namespace string, encoders ...func(pk
 	return e.Attributes
 }
 
+// EncodeOpt1 takes DHCP Opt 1 from a DHCP packet and adds an OTEL
+// key/value pair to the Encoder.Attributes. See https://www.iana.org/assignments/bootp-dhcp-parameters/bootp-dhcp-parameters.xhtml
 func (e *Encoder) EncodeOpt1(d *dhcpv4.DHCPv4, namespace string) error {
 	key := fmt.Sprintf("%v.%v.Opt1.SubnetMask", keyNamespace, namespace)
 	if d != nil && d.SubnetMask() != nil {
@@ -73,9 +77,11 @@ func (e *Encoder) EncodeOpt1(d *dhcpv4.DHCPv4, namespace string) error {
 		return nil
 	}
 
-	return &errOptNotFound{optName: key}
+	return &optNotFoundError{optName: key}
 }
 
+// EncodeOpt3 takes DHCP Opt 3 from a DHCP packet and adds an OTEL
+// key/value pair to the Encoder.Attributes. See https://www.iana.org/assignments/bootp-dhcp-parameters/bootp-dhcp-parameters.xhtml
 func (e *Encoder) EncodeOpt3(d *dhcpv4.DHCPv4, namespace string) error {
 	key := fmt.Sprintf("%v.%v.Opt3.DefaultGateway", keyNamespace, namespace)
 	if d != nil {
@@ -89,9 +95,11 @@ func (e *Encoder) EncodeOpt3(d *dhcpv4.DHCPv4, namespace string) error {
 		}
 	}
 
-	return &errOptNotFound{optName: key}
+	return &optNotFoundError{optName: key}
 }
 
+// EncodeOpt6 takes DHCP Opt 6 from a DHCP packet and adds an OTEL
+// key/value pair to the Encoder.Attributes. See https://www.iana.org/assignments/bootp-dhcp-parameters/bootp-dhcp-parameters.xhtml
 func (e *Encoder) EncodeOpt6(d *dhcpv4.DHCPv4, namespace string) error {
 	key := fmt.Sprintf("%v.%v.Opt6.NameServers", keyNamespace, namespace)
 	if d != nil {
@@ -105,9 +113,11 @@ func (e *Encoder) EncodeOpt6(d *dhcpv4.DHCPv4, namespace string) error {
 		}
 	}
 
-	return &errOptNotFound{optName: key}
+	return &optNotFoundError{optName: key}
 }
 
+// EncodeOpt12 takes DHCP Opt 12 from a DHCP packet and adds an OTEL
+// key/value pair to the Encoder.Attributes. See https://www.iana.org/assignments/bootp-dhcp-parameters/bootp-dhcp-parameters.xhtml
 func (e *Encoder) EncodeOpt12(d *dhcpv4.DHCPv4, namespace string) error {
 	key := fmt.Sprintf("%v.%v.Opt12.Hostname", keyNamespace, namespace)
 	if d != nil && d.HostName() != "" {
@@ -115,9 +125,11 @@ func (e *Encoder) EncodeOpt12(d *dhcpv4.DHCPv4, namespace string) error {
 		return nil
 	}
 
-	return &errOptNotFound{optName: key}
+	return &optNotFoundError{optName: key}
 }
 
+// EncodeOpt15 takes DHCP Opt 15 from a DHCP packet and adds an OTEL
+// key/value pair to the Encoder.Attributes. See https://www.iana.org/assignments/bootp-dhcp-parameters/bootp-dhcp-parameters.xhtml
 func (e *Encoder) EncodeOpt15(d *dhcpv4.DHCPv4, namespace string) error {
 	key := fmt.Sprintf("%v.%v.Opt15.DomainName", keyNamespace, namespace)
 	if d != nil && d.DomainName() != "" {
@@ -125,9 +137,11 @@ func (e *Encoder) EncodeOpt15(d *dhcpv4.DHCPv4, namespace string) error {
 		return nil
 	}
 
-	return &errOptNotFound{optName: key}
+	return &optNotFoundError{optName: key}
 }
 
+// EncodeOpt28 takes DHCP Opt 28 from a DHCP packet and adds an OTEL
+// key/value pair to the Encoder.Attributes. See https://www.iana.org/assignments/bootp-dhcp-parameters/bootp-dhcp-parameters.xhtml
 func (e *Encoder) EncodeOpt28(d *dhcpv4.DHCPv4, namespace string) error {
 	key := fmt.Sprintf("%v.%v.Opt28.BroadcastAddress", keyNamespace, namespace)
 	if d != nil && d.BroadcastAddress() != nil {
@@ -135,9 +149,11 @@ func (e *Encoder) EncodeOpt28(d *dhcpv4.DHCPv4, namespace string) error {
 		return nil
 	}
 
-	return &errOptNotFound{optName: key}
+	return &optNotFoundError{optName: key}
 }
 
+// EncodeOpt42 takes DHCP Opt 42 from a DHCP packet and adds an OTEL
+// key/value pair to the Encoder.Attributes. See https://www.iana.org/assignments/bootp-dhcp-parameters/bootp-dhcp-parameters.xhtml
 func (e *Encoder) EncodeOpt42(d *dhcpv4.DHCPv4, namespace string) error {
 	key := fmt.Sprintf("%v.%v.Opt42.NTPServers", keyNamespace, namespace)
 	if d != nil {
@@ -151,9 +167,11 @@ func (e *Encoder) EncodeOpt42(d *dhcpv4.DHCPv4, namespace string) error {
 		}
 	}
 
-	return &errOptNotFound{optName: key}
+	return &optNotFoundError{optName: key}
 }
 
+// EncodeOpt51 takes DHCP Opt 51 from a DHCP packet and adds an OTEL
+// key/value pair to the Encoder.Attributes. See https://www.iana.org/assignments/bootp-dhcp-parameters/bootp-dhcp-parameters.xhtml
 func (e *Encoder) EncodeOpt51(d *dhcpv4.DHCPv4, namespace string) error {
 	key := fmt.Sprintf("%v.%v.Opt51.LeaseTime", keyNamespace, namespace)
 	if d != nil && d.IPAddressLeaseTime(0) != 0 {
@@ -161,9 +179,11 @@ func (e *Encoder) EncodeOpt51(d *dhcpv4.DHCPv4, namespace string) error {
 		return nil
 	}
 
-	return &errOptNotFound{optName: key}
+	return &optNotFoundError{optName: key}
 }
 
+// EncodeOpt53 takes DHCP Opt 53 from a DHCP packet and adds an OTEL
+// key/value pair to the Encoder.Attributes. See https://www.iana.org/assignments/bootp-dhcp-parameters/bootp-dhcp-parameters.xhtml
 func (e *Encoder) EncodeOpt53(d *dhcpv4.DHCPv4, namespace string) error {
 	key := fmt.Sprintf("%v.%v.Opt53.MessageType", keyNamespace, namespace)
 	if d != nil && d.MessageType() != dhcpv4.MessageTypeNone {
@@ -171,9 +191,11 @@ func (e *Encoder) EncodeOpt53(d *dhcpv4.DHCPv4, namespace string) error {
 		return nil
 	}
 
-	return &errOptNotFound{optName: key}
+	return &optNotFoundError{optName: key}
 }
 
+// EncodeOpt54 takes DHCP Opt 54 from a DHCP packet and adds an OTEL
+// key/value pair to the Encoder.Attributes. See https://www.iana.org/assignments/bootp-dhcp-parameters/bootp-dhcp-parameters.xhtml
 func (e *Encoder) EncodeOpt54(d *dhcpv4.DHCPv4, namespace string) error {
 	key := fmt.Sprintf("%v.%v.Opt54.ServerIdentifier", keyNamespace, namespace)
 	if d != nil && d.ServerIdentifier() != nil {
@@ -181,9 +203,11 @@ func (e *Encoder) EncodeOpt54(d *dhcpv4.DHCPv4, namespace string) error {
 		return nil
 	}
 
-	return &errOptNotFound{optName: key}
+	return &optNotFoundError{optName: key}
 }
 
+// EncodeOpt119 takes DHCP Opt 119 from a DHCP packet and adds an OTEL
+// key/value pair to the Encoder.Attributes. See https://www.iana.org/assignments/bootp-dhcp-parameters/bootp-dhcp-parameters.xhtml
 func (e *Encoder) EncodeOpt119(d *dhcpv4.DHCPv4, namespace string) error {
 	key := fmt.Sprintf("%v.%v.Opt119.DomainSearch", keyNamespace, namespace)
 	if d != nil {
@@ -193,9 +217,11 @@ func (e *Encoder) EncodeOpt119(d *dhcpv4.DHCPv4, namespace string) error {
 		}
 	}
 
-	return &errOptNotFound{optName: key}
+	return &optNotFoundError{optName: key}
 }
 
+// EncodeYIADDR takes the yiaddr header from a DHCP packet and adds an OTEL
+// key/value pair to the Encoder.Attributes. See https://datatracker.ietf.org/doc/html/rfc2131#page-9
 func (e *Encoder) EncodeYIADDR(d *dhcpv4.DHCPv4, namespace string) error {
 	key := fmt.Sprintf("%v.%v.Header.yiaddr", keyNamespace, namespace)
 	if d != nil && d.YourIPAddr != nil {
@@ -203,9 +229,11 @@ func (e *Encoder) EncodeYIADDR(d *dhcpv4.DHCPv4, namespace string) error {
 		return nil
 	}
 
-	return &errOptNotFound{optName: key}
+	return &optNotFoundError{optName: key}
 }
 
+// EncodeSIADDR takes the siaddr header from a DHCP packet and adds an OTEL
+// key/value pair to the Encoder.Attributes. See https://datatracker.ietf.org/doc/html/rfc2131#page-9
 func (e *Encoder) EncodeSIADDR(d *dhcpv4.DHCPv4, namespace string) error {
 	key := fmt.Sprintf("%v.%v.Header.siaddr", keyNamespace, namespace)
 	if d != nil && d.ServerIPAddr != nil {
@@ -213,9 +241,11 @@ func (e *Encoder) EncodeSIADDR(d *dhcpv4.DHCPv4, namespace string) error {
 		return nil
 	}
 
-	return &errOptNotFound{optName: key}
+	return &optNotFoundError{optName: key}
 }
 
+// EncodeCHADDR takes the CHADDR header from a DHCP packet and adds an OTEL
+// key/value pair to the Encoder.Attributes. See https://datatracker.ietf.org/doc/html/rfc2131#page-9
 func (e *Encoder) EncodeCHADDR(d *dhcpv4.DHCPv4, namespace string) error {
 	key := fmt.Sprintf("%v.%v.Header.chaddr", keyNamespace, namespace)
 	if d != nil && d.ClientHWAddr != nil {
@@ -223,9 +253,11 @@ func (e *Encoder) EncodeCHADDR(d *dhcpv4.DHCPv4, namespace string) error {
 		return nil
 	}
 
-	return &errOptNotFound{optName: key}
+	return &optNotFoundError{optName: key}
 }
 
+// EncodeFILE takes the file header from a DHCP packet and adds an OTEL
+// key/value pair to the Encoder.Attributes. See https://datatracker.ietf.org/doc/html/rfc2131#page-9
 func (e *Encoder) EncodeFILE(d *dhcpv4.DHCPv4, namespace string) error {
 	key := fmt.Sprintf("%v.%v.Header.file", keyNamespace, namespace)
 	if d != nil && d.BootFileName != "" {
@@ -233,7 +265,7 @@ func (e *Encoder) EncodeFILE(d *dhcpv4.DHCPv4, namespace string) error {
 		return nil
 	}
 
-	return &errOptNotFound{optName: key}
+	return &optNotFoundError{optName: key}
 }
 
 // TraceparentFromContext extracts the binary trace id, span id, and trace flags

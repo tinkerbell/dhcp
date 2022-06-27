@@ -36,7 +36,7 @@ func TestNoop_HandleSTDOUT(t *testing.T) {
 	var buf bytes.Buffer
 	io.Copy(&buf, r)
 
-	want := `noop.go:22: "level"=0 "msg"="no handler specified. please specify a handler"` + "\n"
+	want := `noop.go:23: "level"=0 "msg"="no handler specified. please specify a handler"` + "\n"
 	if diff := cmp.Diff(buf.String(), want); diff != "" {
 		t.Fatalf(diff)
 	}

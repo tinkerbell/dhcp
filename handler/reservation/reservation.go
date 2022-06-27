@@ -32,6 +32,7 @@ type Handler struct {
 	OTELEnabled bool
 }
 
+// Netboot holds the netboot configuration details used in running a DHCP server.
 type Netboot struct {
 	// iPXE binary server IP:Port serving via TFTP.
 	IPXEBinServerTFTP netaddr.IPPort

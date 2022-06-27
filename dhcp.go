@@ -16,11 +16,11 @@ import (
 )
 
 // ErrNoConn is an error im still not sure i want to use.
-var ErrNoConn = &errNoConn{}
+var ErrNoConn = &noConnError{}
 
-type errNoConn struct{}
+type noConnError struct{}
 
-func (e *errNoConn) Error() string {
+func (e *noConnError) Error() string {
 	return "no connection specified"
 }
 
@@ -112,7 +112,8 @@ func (l *Listener) Shutdown() error {
 
 // Transformer is used in mergo for merging structs.
 func (l *Listener) Transformer(typ reflect.Type) func(dst, src reflect.Value) error {
-	switch typ {
+	//nolint:revive // the switch is place holder to show when multiple transformers.
+	switch typ { //nolint:gocritic // the switch is place holder to show when multiple transformers.
 	case reflect.TypeOf(netaddr.IPPort{}):
 		return func(dst, src reflect.Value) error {
 			if dst.CanSet() {
