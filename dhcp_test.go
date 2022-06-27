@@ -14,7 +14,7 @@ import (
 	"inet.af/netaddr"
 )
 
-type static struct {
+type mock struct {
 	Log         logr.Logger
 	ServerIP    net.IP
 	LeaseTime   uint32
@@ -24,13 +24,13 @@ type static struct {
 	Router      net.IP
 }
 
-func (s *static) Handle(conn net.PacketConn, peer net.Addr, m *dhcpv4.DHCPv4) {
-	if s.Log.GetSink() == nil {
-		s.Log = logr.Discard()
+func (m *mock) Handle(conn net.PacketConn, peer net.Addr, pkt *dhcpv4.DHCPv4) {
+	if m.Log.GetSink() == nil {
+		m.Log = logr.Discard()
 	}
 
-	mods := s.setOpts()
-	switch mt := m.MessageType(); mt {
+	mods := m.setOpts()
+	switch mt := pkt.MessageType(); mt {
 	case dhcpv4.MessageTypeDiscover:
 		mods = append(mods, dhcpv4.WithMessageType(dhcpv4.MessageTypeOffer))
 	case dhcpv4.MessageTypeRequest:
@@ -38,22 +38,22 @@ func (s *static) Handle(conn net.PacketConn, peer net.Addr, m *dhcpv4.DHCPv4) {
 	case dhcpv4.MessageTypeRelease:
 		mods = append(mods, dhcpv4.WithMessageType(dhcpv4.MessageTypeAck))
 	default:
-		s.Log.Info("unsupported message type", "type", mt.String())
+		m.Log.Info("unsupported message type", "type", mt.String())
 		return
 	}
-	reply, err := dhcpv4.NewReplyFromRequest(m, mods...)
+	reply, err := dhcpv4.NewReplyFromRequest(pkt, mods...)
 	if err != nil {
-		s.Log.Error(err, "error creating reply")
+		m.Log.Error(err, "error creating reply")
 		return
 	}
 	if _, err := conn.WriteTo(reply.ToBytes(), peer); err != nil {
-		s.Log.Error(err, "failed to send reply")
+		m.Log.Error(err, "failed to send reply")
 		return
 	}
-	s.Log.Info("sent reply")
+	m.Log.Info("sent reply")
 }
 
-func (p *static) setOpts() []dhcpv4.Modifier {
+func (p *mock) setOpts() []dhcpv4.Modifier {
 	mods := []dhcpv4.Modifier{
 		dhcpv4.WithGeneric(dhcpv4.OptionServerIdentifier, p.ServerIP),
 		dhcpv4.WithServerIP(p.ServerIP),
@@ -81,11 +81,11 @@ func TestListenAndServe(t *testing.T) {
 	t.Skip()
 	// test if the server is listening on the correct address and port
 	tests := map[string]struct {
-		h            handler
+		h            Handler
 		addr         netaddr.IPPort
 		wantListener *Listener
 	}{
-		"success": {addr: netaddr.IPPortFrom(netaddr.IPv4(0, 0, 0, 0), 7676), h: &static{}},
+		"success": {addr: netaddr.IPPortFrom(netaddr.IPv4(0, 0, 0, 0), 7676), h: &mock{}},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -111,14 +111,15 @@ func TestListenAndServe(t *testing.T) {
 	}
 }
 
-func TestListenerServe(t *testing.T) {
+func TestListenerAndServe(t *testing.T) {
 	tests := map[string]struct {
-		h    handler
+		h    Handler
 		addr netaddr.IPPort
 		err  error
 	}{
-		"success":    {addr: netaddr.IPPortFrom(netaddr.IPv4(0, 0, 0, 0), 7676), h: &noop.Handler{}},
-		"no handler": {addr: netaddr.IPPortFrom(netaddr.IPv4(0, 0, 0, 0), 7678)},
+		"noop handler": {h: &noop.Handler{}, addr: netaddr.IPPortFrom(netaddr.IPv4(0, 0, 0, 0), 7676)},
+		"no handler":   {addr: netaddr.IPPortFrom(netaddr.IPv4(0, 0, 0, 0), 7678)},
+		"mock handler": {h: &mock{}, addr: netaddr.IPPortFrom(netaddr.IPv4(0, 0, 0, 0), 7678)},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -132,7 +133,7 @@ func TestListenerServe(t *testing.T) {
 				s.Shutdown()
 			}()
 
-			err := s.Serve(nil)
+			err := s.ListenAndServe(tt.h)
 			switch err.(type) {
 			case *net.OpError:
 			default:
@@ -146,12 +147,12 @@ func TestListenerServe(t *testing.T) {
 
 func TestServe(t *testing.T) {
 	tests := map[string]struct {
-		h    handler
+		h    Handler
 		addr netaddr.IPPort
 		err  error
 	}{
-		"success":    {addr: netaddr.IPPortFrom(netaddr.IPv4(0, 0, 0, 0), 7676), h: &noop.Handler{}},
-		"no handler": {addr: netaddr.IPPortFrom(netaddr.IPv4(0, 0, 0, 0), 7678)},
+		"noop handler": {addr: netaddr.IPPortFrom(netaddr.IPv4(0, 0, 0, 0), 7676), h: &noop.Handler{}},
+		"no handler":   {addr: netaddr.IPPortFrom(netaddr.IPv4(0, 0, 0, 0), 7678)},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
