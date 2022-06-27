@@ -61,7 +61,7 @@ $(GOLANGCI_LINT_BIN):
 
 LINTERS += golangci-lint-lint
 golangci-lint-lint: $(GOLANGCI_LINT_BIN)
-	find . -name go.mod -execdir "$(GOLANGCI_LINT_BIN)" run -c "$(GOLINT_CONFIG)" \;
+	find . -name go.mod -execdir sh -c '"$(GOLANGCI_LINT_BIN)" run -c "$(GOLINT_CONFIG)"' '{}' '+'
 
 FIXERS += golangci-lint-fix
 golangci-lint-fix: $(GOLANGCI_LINT_BIN)
