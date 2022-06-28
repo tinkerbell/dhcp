@@ -14,7 +14,7 @@ DHCP library and CLI server with multiple backends. All IP addresses are served 
   It pulls hardware data from the Tink API for use in the DHCP server.
 - File based
   - This backend is for mainly for testing and development.
-  It reads a file for hardware data. See [examples/dhcp.yaml](./example/dhcp.yaml) for the data model.
+  It reads a file for hardware data. See [example.yaml](./backend/file/testdata/example.yaml) for the data model.
 - [Cacher server](https://github.com/packethost/cacher)
   - This backend is mainly for backward compatibility in [Boots](https://github.com/tinkerbell/boots).
   It pulls hardware data from the Cacher API for use in the DHCP server.
