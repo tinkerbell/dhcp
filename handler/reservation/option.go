@@ -1,4 +1,4 @@
-package dhcp
+package reservation
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/insomniacslk/dhcp/iana"
 	"github.com/tinkerbell/dhcp/data"
-	"go.opentelemetry.io/otel/trace"
+	"github.com/tinkerbell/dhcp/otel"
 	"inet.af/netaddr"
 )
 
@@ -68,14 +68,14 @@ func (c clientType) String() string {
 }
 
 // String function for UserClass.
-func (c UserClass) String() string {
-	return string(c)
+func (u UserClass) String() string {
+	return string(u)
 }
 
 // setDHCPOpts takes a client dhcp packet and data (typically from a backend) and creates a slice of DHCP packet modifiers.
 // m is the DHCP request from a client. d is the data to use to create the DHCP packet modifiers.
 // This is most likely the place where we would have any business logic for determining DHCP option setting.
-func (s *Server) setDHCPOpts(_ context.Context, _ *dhcpv4.DHCPv4, d *data.DHCP) []dhcpv4.Modifier {
+func (h *Handler) setDHCPOpts(_ context.Context, _ *dhcpv4.DHCPv4, d *data.DHCP) []dhcpv4.Modifier {
 	mods := []dhcpv4.Modifier{
 		dhcpv4.WithLeaseTime(d.LeaseTime),
 		dhcpv4.WithYourIP(d.IPAddress.IPAddr().IP),
@@ -119,7 +119,7 @@ func (s *Server) setDHCPOpts(_ context.Context, _ *dhcpv4.DHCPv4, d *data.DHCP) 
 // DHCP option
 // option 60: Class Identifier. https://www.rfc-editor.org/rfc/rfc2132.html#section-9.13
 // option 60 is set if the client's option 60 (Class Identifier) starts with HTTPClient.
-func (s *Server) setNetworkBootOpts(ctx context.Context, m *dhcpv4.DHCPv4, n *data.Netboot) dhcpv4.Modifier {
+func (h *Handler) setNetworkBootOpts(ctx context.Context, m *dhcpv4.DHCPv4, n *data.Netboot) dhcpv4.Modifier {
 	// m is a received DHCPv4 packet.
 	// d is the reply packet we are building.
 	withNetboot := func(d *dhcpv4.DHCPv4) {
@@ -137,19 +137,19 @@ func (s *Server) setNetworkBootOpts(ctx context.Context, m *dhcpv4.DHCPv4, n *da
 			a := arch(m)
 			bin, found := ArchToBootFile[a]
 			if !found {
-				s.Log.Error(fmt.Errorf("unable to find bootfile for arch"), "network boot not allowed", "arch", a, "archInt", int(a), "mac", m.ClientHWAddr)
+				h.Log.Error(fmt.Errorf("unable to find bootfile for arch"), "network boot not allowed", "arch", a, "archInt", int(a), "mac", m.ClientHWAddr)
 				return
 			}
 			uClass := UserClass(string(m.GetOneOption(dhcpv4.OptionUserClassInformation)))
-			ipxeScript := s.IPXEScriptURL
+			ipxeScript := h.Netboot.IPXEScriptURL
 			if n.IPXEScriptURL != nil {
 				ipxeScript = n.IPXEScriptURL
 			}
-			d.BootFileName, d.ServerIPAddr = s.bootfileAndNextServer(ctx, uClass, opt60, bin, s.IPXEBinServerTFTP, s.IPXEBinServerHTTP, ipxeScript)
+			d.BootFileName, d.ServerIPAddr = h.bootfileAndNextServer(ctx, uClass, opt60, bin, h.Netboot.IPXEBinServerTFTP, h.Netboot.IPXEBinServerHTTP, ipxeScript)
 			pxe := dhcpv4.Options{ // FYI, these are suboptions of option43. ref: https://datatracker.ietf.org/doc/html/rfc2132#section-8.4
 				// PXE Boot Server Discovery Control - bypass, just boot from filename.
 				6:  []byte{8},
-				69: binaryTpFromContext(ctx),
+				69: otel.TraceparentFromContext(ctx),
 			}
 			d.UpdateOption(dhcpv4.OptGeneric(dhcpv4.OptionVendorSpecificInformation, pxe.ToBytes()))
 		}
@@ -161,15 +161,15 @@ func (s *Server) setNetworkBootOpts(ctx context.Context, m *dhcpv4.DHCPv4, n *da
 // bootfileAndNextServer returns the bootfile (string) and next server (net.IP).
 // input arguments `tftp`, `ipxe` and `iscript` use non string types so as to attempt to be more clear about the expectation around what is wanted for these values.
 // It also helps us avoid having to validate a string in multiple ways.
-func (s *Server) bootfileAndNextServer(ctx context.Context, uClass UserClass, opt60, bin string, tftp netaddr.IPPort, ipxe, iscript *url.URL) (string, net.IP) {
+func (h *Handler) bootfileAndNextServer(ctx context.Context, uClass UserClass, opt60, bin string, tftp netaddr.IPPort, ipxe, iscript *url.URL) (string, net.IP) {
 	var nextServer net.IP
 	var bootfile string
-	if tp := otelhelpers.TraceparentStringFromContext(ctx); s.OTELEnabled && tp != "" {
+	if tp := otelhelpers.TraceparentStringFromContext(ctx); h.OTELEnabled && tp != "" {
 		bin = fmt.Sprintf("%s-%v", bin, tp)
 	}
 	// If a machine is in an ipxe boot loop, it is likely to be that we aren't matching on IPXE or Tinkerbell userclass (option 77).
 	switch { // order matters here.
-	case uClass == Tinkerbell, (s.UserClass != "" && uClass == s.UserClass): // this case gets us out of an ipxe boot loop.
+	case uClass == Tinkerbell, (h.Netboot.UserClass != "" && uClass == h.Netboot.UserClass): // this case gets us out of an ipxe boot loop.
 		bootfile = "/no-ipxe-script-defined"
 		if iscript != nil {
 			bootfile = iscript.String()
@@ -178,7 +178,7 @@ func (s *Server) bootfileAndNextServer(ctx context.Context, uClass UserClass, op
 		bootfile = fmt.Sprintf("%s/%s", ipxe, bin)
 		ns := net.ParseIP(ipxe.Host)
 		if ns == nil {
-			s.Log.Error(fmt.Errorf("unable to parse ipxe host"), "ipxe", ipxe.Host)
+			h.Log.Error(fmt.Errorf("unable to parse ipxe host"), "ipxe", ipxe.Host)
 			ns = net.ParseIP("0.0.0.0")
 		}
 		nextServer = ns
@@ -217,28 +217,4 @@ func arch(d *dhcpv4.DHCPv4) iana.Arch {
 	}
 
 	return a
-}
-
-// binaryTpFromContext extracts the binary trace id, span id, and trace flags
-// from the running span in ctx and returns a 26 byte []byte with the traceparent
-// encoded and ready to pass into a suboption (most likely 69) of opt43.
-func binaryTpFromContext(ctx context.Context) []byte {
-	sc := trace.SpanContextFromContext(ctx)
-	tpBytes := make([]byte, 0, 26)
-
-	// the otel spec says 16 bytes for trace id and 8 for spans are good enough
-	// for everyone copy them into a []byte that we can deliver over option43
-	tid := [16]byte(sc.TraceID()) // type TraceID [16]byte
-	sid := [8]byte(sc.SpanID())   // type SpanID [8]byte
-
-	tpBytes = append(tpBytes, 0x00)      // traceparent version
-	tpBytes = append(tpBytes, tid[:]...) // trace id
-	tpBytes = append(tpBytes, sid[:]...) // span id
-	if sc.IsSampled() {
-		tpBytes = append(tpBytes, 0x01) // trace flags
-	} else {
-		tpBytes = append(tpBytes, 0x00)
-	}
-
-	return tpBytes
 }

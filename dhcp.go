@@ -1,171 +1,119 @@
-// Package dhcp provides a DHCPv4 server implementation.
+// Package dhcp providers UDP listening and serving functionality.
 package dhcp
 
 import (
-	"context"
+	"errors"
 	"fmt"
 	"net"
-	"net/url"
 	"reflect"
+	"sync"
 
-	"github.com/go-logr/logr"
 	"github.com/imdario/mergo"
+	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/insomniacslk/dhcp/dhcpv4/server4"
-	"github.com/tinkerbell/dhcp/data"
+	"github.com/tinkerbell/dhcp/handler/noop"
 	"inet.af/netaddr"
 )
 
-// Server holds the configuration details for the running the DHCP server.
-type Server struct {
-	// ctx in a struct is not generally the best way to handle context (see https://pkg.go.dev/context),
-	// but with the way handlers are written in github.com/insomniacslk/dhcp/dhcpv4
-	// this is the only way to get the context into the handlers.
-	ctx context.Context
+// ErrNoConn is an error im still not sure i want to use.
+var ErrNoConn = &noConnError{}
 
-	// Log is used to log messages.
-	// `logr.Discard()` can be used if no logging is desired.
-	Log logr.Logger
+type noConnError struct{}
 
-	// Listener collects an IP and port.
-	// The port is combined with 0.0.0.0 to listen for broadcast traffic.
-	// The IP is used to find the network interface to listen on for DHCP requests.
-	Listener netaddr.IPPort
-
-	// IPAddr is the IP address to use in DHCP responses.
-	// Option 54 and the sname DHCP header.
-	// This could be a load balancer IP address or an ingress IP address or a local IP address.
-	IPAddr netaddr.IP
-
-	// iPXE binary server IP:Port serving via TFTP.
-	IPXEBinServerTFTP netaddr.IPPort
-
-	// IPXEBinServerHTTP is the URL to the IPXE binary server serving via HTTP(s).
-	IPXEBinServerHTTP *url.URL
-
-	// IPXEScriptURL is the URL to the IPXE script to use.
-	IPXEScriptURL *url.URL
-
-	// NetbootEnabled is whether to enable sending netboot DHCP options.
-	NetbootEnabled bool
-
-	// UserClass (for network booting) allows a custom DHCP option 77 to be used to break out of an iPXE loop.
-	UserClass UserClass
-
-	// Backend is the backend to use for getting DHCP data.
-	Backend BackendReader
-
-	// OTELEnabled is used to determine if netboot options include otel naming.
-	// When true, the netboot filename will be appended with otel information.
-	// For example, the filename will be "snp.efi-00-23b1e307bb35484f535a1f772c06910e-d887dc3912240434-01".
-	// <original filename>-00-<trace id>-<span id>-<trace flags>
-	OTELEnabled bool
+func (e *noConnError) Error() string {
+	return "no connection specified"
 }
 
-// ListenAndServe will listen and serve DHCP server.
-//
-// Default listen port is ":67".
-//
-// Override the defaults by setting the Server struct fields.
-func (s *Server) ListenAndServe(ctx context.Context) error {
-	defaults := &Server{
-		Log:      logr.Discard(),
-		Listener: netaddr.IPPortFrom(netaddr.IPv4(0, 0, 0, 0), 67),
-		IPAddr:   defaultIP(),
-		Backend:  &noop{},
-	}
-
-	err := mergo.Merge(s, defaults, mergo.WithTransformers(s))
-	if err != nil {
-		return err
-	}
-	// for broadcast traffic we need to listen on all IPs
-	conn := &net.UDPAddr{
-		IP:   net.ParseIP("0.0.0.0"),
-		Port: s.Listener.UDPAddr().Port,
-	}
-
-	s.ctx = ctx
-	// server4.NewServer() will isolate listening to the specific interface.
-	srv, err := server4.NewServer(getInterfaceByIP(s.Listener.IP().String()), conn, s.handleFunc)
-	if err != nil {
-		return err
-	}
-
-	go func() {
-		<-s.ctx.Done()
-		_ = srv.Close()
-	}()
-	s.Log.Info("starting DHCP server", "port", s.Listener.Port(), "interface", s.IPAddr.String())
-
-	return srv.Serve()
+// Listener is a DHCPv4 server.
+type Listener struct {
+	Addr     netaddr.IPPort
+	srvMu    sync.Mutex
+	srv      *server4.Server
+	handlers []Handler
 }
 
-// Serve run the DHCP server using the given PacketConn.
-func (s *Server) Serve(ctx context.Context, conn net.PacketConn) error {
-	defaults := &Server{
-		Log:      logr.Discard(),
-		Listener: netaddr.IPPortFrom(netaddr.IPv4(0, 0, 0, 0), 67),
-		IPAddr:   defaultIP(),
-		Backend:  &noop{},
-	}
-
-	err := mergo.Merge(s, defaults, mergo.WithTransformers(s))
-	if err != nil {
-		return err
-	}
-
-	s.ctx = ctx
-	// server4.NewServer() will isolate listening to the specific interface.
-	srv, err := server4.NewServer("", nil, s.handleFunc, server4.WithConn(conn))
-	if err != nil {
-		return err
-	}
-
-	go func() {
-		<-s.ctx.Done()
-		_ = srv.Close()
-	}()
-	s.Log.Info("starting DHCP server", "port", s.Listener.Port(), "interface", s.IPAddr.String())
-
-	return srv.Serve()
+// Handler is the interface is responsible for responding to DHCP messages.
+type Handler interface {
+	// Handle is used for how to respond to DHCP messages.
+	Handle(net.PacketConn, net.Addr, *dhcpv4.DHCPv4)
 }
 
-// getInterfaceByIP returns the interface with the given IP address or an empty string.
-func getInterfaceByIP(ip string) string {
-	ifaces, err := net.Interfaces()
-	if err != nil {
-		return ""
+// Handler is the main handler passed to the server4 function.
+// Internally it allows for multiple handlers to be defined.
+// Each handler in l.handlers then executed for every received packet.
+func (l *Listener) Handler(conn net.PacketConn, peer net.Addr, pkt *dhcpv4.DHCPv4) {
+	for _, h := range l.handlers {
+		h.Handle(conn, peer, pkt)
 	}
-	for _, iface := range ifaces {
-		addrs, err := iface.Addrs()
-		if err != nil {
-			continue
-		}
-		for _, addr := range addrs {
-			if ipnet, ok := addr.(*net.IPNet); ok {
-				if ipnet.IP.String() == ip {
-					return iface.Name
-				}
-			}
-		}
-	}
-	return ""
 }
 
-// Transformer for merging the netaddr.IPPort and logr.Logger structs.
-func (s *Server) Transformer(typ reflect.Type) func(dst, src reflect.Value) error {
-	switch typ {
-	case reflect.TypeOf(logr.Logger{}):
-		return func(dst, src reflect.Value) error {
-			if dst.CanSet() {
-				isZero := dst.MethodByName("GetSink")
-				result := isZero.Call(nil)
-				if result[0].IsNil() {
-					dst.Set(src)
-				}
-			}
-			return nil
-		}
+// Serve will listen for DHCP messages on the given net.PacketConn and call the handler for each.
+func Serve(c net.PacketConn, h ...Handler) error {
+	srv := &Listener{handlers: h}
+
+	return srv.Serve(c)
+}
+
+// Serve will listen for DHCP messages on the given net.PacketConn and call the handler in *Listener for each.
+// If no handler is specified, a Noop handler will be used.
+func (l *Listener) Serve(c net.PacketConn) error {
+	if len(l.handlers) == 0 {
+		l.handlers = append(l.handlers, &noop.Handler{})
+	}
+	if c == nil {
+		return ErrNoConn
+	}
+	dhcp, err := server4.NewServer("", nil, l.Handler, server4.WithConn(c))
+	if err != nil {
+		return fmt.Errorf("failed to create dhcpv4 server: %w", err)
+	}
+	l.srvMu.Lock()
+	l.srv = dhcp
+	l.srvMu.Unlock()
+
+	return l.srv.Serve()
+}
+
+// ListenAndServe will listen for DHCP messages and call the given handler for each.
+func (l *Listener) ListenAndServe(h ...Handler) error {
+	if len(h) == 0 {
+		l.handlers = append(l.handlers, &noop.Handler{})
+	}
+	l.handlers = h
+	defaults := &Listener{
+		Addr: netaddr.IPPortFrom(netaddr.IPv4(0, 0, 0, 0), 67),
+	}
+	if err := mergo.Merge(l, defaults, mergo.WithTransformers(l)); err != nil {
+		return fmt.Errorf("failed to merge defaults: %w", err)
+	}
+
+	addr := &net.UDPAddr{
+		IP:   l.Addr.UDPAddr().IP,
+		Port: l.Addr.UDPAddr().Port,
+	}
+	conn, err := server4.NewIPv4UDPConn("", addr)
+	if err != nil {
+		return fmt.Errorf("failed to create udp connection: %w", err)
+	}
+
+	return l.Serve(conn)
+}
+
+// Shutdown closes the listener.
+func (l *Listener) Shutdown() error {
+	l.srvMu.Lock()
+	defer l.srvMu.Unlock()
+	if l.srv == nil {
+		return errors.New("no server to shutdown")
+	}
+
+	return l.srv.Close()
+}
+
+// Transformer is used in mergo for merging structs.
+func (l *Listener) Transformer(typ reflect.Type) func(dst, src reflect.Value) error {
+	//nolint:revive // the switch is place holder to show when multiple transformers.
+	switch typ { //nolint:gocritic // the switch is place holder to show when multiple transformers.
 	case reflect.TypeOf(netaddr.IPPort{}):
 		return func(dst, src reflect.Value) error {
 			if dst.CanSet() {
@@ -175,56 +123,10 @@ func (s *Server) Transformer(typ reflect.Type) func(dst, src reflect.Value) erro
 					dst.Set(src)
 				}
 			}
-			return nil
-		}
-	case reflect.TypeOf(netaddr.IP{}):
-		return func(dst, src reflect.Value) error {
-			if dst.CanSet() {
-				isZero := dst.MethodByName("IsZero")
-				result := isZero.Call([]reflect.Value{})
-				if result[0].Bool() {
-					dst.Set(src)
-				}
-			}
-			return nil
-		}
-	case reflect.TypeOf(s.Backend):
-		return func(dst, src reflect.Value) error {
+
 			return nil
 		}
 	}
 
 	return nil
-}
-
-// defaultIP will return either the default IP associated with default route or 0.0.0.0.
-func defaultIP() netaddr.IP {
-	addrs, err := net.InterfaceAddrs()
-	if err != nil {
-		return netaddr.IPv4(0, 0, 0, 0)
-	}
-	for _, addr := range addrs {
-		ip, ok := addr.(*net.IPNet)
-		if !ok {
-			continue
-		}
-		v4 := ip.IP.To4()
-		if v4 == nil || !v4.IsGlobalUnicast() {
-			continue
-		}
-
-		if i, ok := netaddr.FromStdIP(v4); ok {
-			return i
-		}
-	}
-	return netaddr.IPv4(0, 0, 0, 0)
-}
-
-type noop struct{}
-
-// ErrNilBackend is used when the backend is not specified.
-var ErrNilBackend = fmt.Errorf("please specify a backend")
-
-func (*noop) Read(context.Context, net.HardwareAddr) (*data.DHCP, *data.Netboot, error) {
-	return nil, nil, ErrNilBackend
 }
