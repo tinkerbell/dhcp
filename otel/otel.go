@@ -17,24 +17,18 @@ const keyNamespace = "DHCP"
 
 // Encoder holds the otel key/value attributes.
 type Encoder struct {
-	Log        logr.Logger
-	Attributes []attribute.KeyValue
+	Log logr.Logger
 }
 
-/*type encodeError struct {
-	key string
-	err error
-}*/
-
-type optNotFoundError struct {
+type notFoundError struct {
 	optName string
 }
 
-func (e *optNotFoundError) Error() string {
+func (e *notFoundError) Error() string {
 	return fmt.Sprintf("%q not found in DHCP packet", e.optName)
 }
 
-func (e *optNotFoundError) found() bool {
+func (e *notFoundError) found() bool {
 	return true
 }
 
@@ -49,40 +43,51 @@ func OptNotFound(err error) bool {
 }
 
 // Encode runs a slice of encoders against a DHCPv4 packet turning the values into opentelemetry attribute key/value pairs.
-func (e *Encoder) Encode(d *dhcpv4.DHCPv4, namespace string, encoders ...func(pkt *dhcpv4.DHCPv4, namespace string) error) []attribute.KeyValue {
+func (e *Encoder) Encode(pkt *dhcpv4.DHCPv4, namespace string, encoders ...func(d *dhcpv4.DHCPv4, namespace string) (attribute.KeyValue, error)) []attribute.KeyValue {
+	if e.Log.GetSink() == nil {
+		e.Log = logr.Discard()
+	}
+	var attrs []attribute.KeyValue
 	for _, elem := range encoders {
-		if err := elem(d, namespace); err != nil {
-			type attr interface {
-				name() string
-			}
-			keysAndValues := []interface{}{"error", err}
-			a, ok := err.(attr)
-			if ok {
-				keysAndValues = append(keysAndValues, "attributeKey", a.name())
-			}
-			e.Log.V(1).Info("opentelemetry attribute not added", keysAndValues...)
+		kv, err := elem(pkt, namespace)
+		if err != nil {
+			e.Log.V(1).Info("opentelemetry attribute not added", "error", fmt.Sprintf("%v", err))
+			continue
 		}
+		attrs = append(attrs, kv)
 	}
 
-	return e.Attributes
+	return attrs
+}
+
+// AllEncoders returns a slice of all available DHCP otel encoders.
+func AllEncoders() []func(d *dhcpv4.DHCPv4, namespace string) (attribute.KeyValue, error) {
+	return []func(d *dhcpv4.DHCPv4, namespace string) (attribute.KeyValue, error){
+		EncodeYIADDR, EncodeSIADDR,
+		EncodeCHADDR, EncodeFILE,
+		EncodeOpt1, EncodeOpt3, EncodeOpt6,
+		EncodeOpt12, EncodeOpt15, EncodeOpt28,
+		EncodeOpt42, EncodeOpt51, EncodeOpt53,
+		EncodeOpt54, EncodeOpt119,
+	}
 }
 
 // EncodeOpt1 takes DHCP Opt 1 from a DHCP packet and adds an OTEL
 // key/value pair to the Encoder.Attributes. See https://www.iana.org/assignments/bootp-dhcp-parameters/bootp-dhcp-parameters.xhtml
-func (e *Encoder) EncodeOpt1(d *dhcpv4.DHCPv4, namespace string) error {
-	key := fmt.Sprintf("%v.%v.Opt1.SubnetMask", keyNamespace, namespace)
+func EncodeOpt1(d *dhcpv4.DHCPv4, namespace string) (attribute.KeyValue, error) {
+	opt := "Opt1.SubnetMask"
+	key := fmt.Sprintf("%v.%v.%v", keyNamespace, namespace, opt)
 	if d != nil && d.SubnetMask() != nil {
 		sm := net.IP(d.SubnetMask()).String()
-		e.Attributes = append(e.Attributes, attribute.String(key, sm))
-		return nil
+		return attribute.String(key, sm), nil
 	}
 
-	return &optNotFoundError{optName: key}
+	return attribute.KeyValue{}, &notFoundError{optName: opt}
 }
 
 // EncodeOpt3 takes DHCP Opt 3 from a DHCP packet and adds an OTEL
 // key/value pair to the Encoder.Attributes. See https://www.iana.org/assignments/bootp-dhcp-parameters/bootp-dhcp-parameters.xhtml
-func (e *Encoder) EncodeOpt3(d *dhcpv4.DHCPv4, namespace string) error {
+func EncodeOpt3(d *dhcpv4.DHCPv4, namespace string) (attribute.KeyValue, error) {
 	key := fmt.Sprintf("%v.%v.Opt3.DefaultGateway", keyNamespace, namespace)
 	if d != nil {
 		var routers []string
@@ -90,17 +95,16 @@ func (e *Encoder) EncodeOpt3(d *dhcpv4.DHCPv4, namespace string) error {
 			routers = append(routers, e.String())
 		}
 		if len(routers) > 0 {
-			e.Attributes = append(e.Attributes, attribute.String(key, strings.Join(routers, ",")))
-			return nil
+			return attribute.String(key, strings.Join(routers, ",")), nil
 		}
 	}
 
-	return &optNotFoundError{optName: key}
+	return attribute.KeyValue{}, &notFoundError{optName: key}
 }
 
 // EncodeOpt6 takes DHCP Opt 6 from a DHCP packet and adds an OTEL
 // key/value pair to the Encoder.Attributes. See https://www.iana.org/assignments/bootp-dhcp-parameters/bootp-dhcp-parameters.xhtml
-func (e *Encoder) EncodeOpt6(d *dhcpv4.DHCPv4, namespace string) error {
+func EncodeOpt6(d *dhcpv4.DHCPv4, namespace string) (attribute.KeyValue, error) {
 	key := fmt.Sprintf("%v.%v.Opt6.NameServers", keyNamespace, namespace)
 	if d != nil {
 		var ns []string
@@ -108,53 +112,49 @@ func (e *Encoder) EncodeOpt6(d *dhcpv4.DHCPv4, namespace string) error {
 			ns = append(ns, e.String())
 		}
 		if len(ns) > 0 {
-			e.Attributes = append(e.Attributes, attribute.String(key, strings.Join(ns, ",")))
-			return nil
+			return attribute.String(key, strings.Join(ns, ",")), nil
 		}
 	}
 
-	return &optNotFoundError{optName: key}
+	return attribute.KeyValue{}, &notFoundError{optName: key}
 }
 
 // EncodeOpt12 takes DHCP Opt 12 from a DHCP packet and adds an OTEL
 // key/value pair to the Encoder.Attributes. See https://www.iana.org/assignments/bootp-dhcp-parameters/bootp-dhcp-parameters.xhtml
-func (e *Encoder) EncodeOpt12(d *dhcpv4.DHCPv4, namespace string) error {
+func EncodeOpt12(d *dhcpv4.DHCPv4, namespace string) (attribute.KeyValue, error) {
 	key := fmt.Sprintf("%v.%v.Opt12.Hostname", keyNamespace, namespace)
 	if d != nil && d.HostName() != "" {
-		e.Attributes = append(e.Attributes, attribute.String(key, d.HostName()))
-		return nil
+		return attribute.String(key, d.HostName()), nil
 	}
 
-	return &optNotFoundError{optName: key}
+	return attribute.KeyValue{}, &notFoundError{optName: key}
 }
 
 // EncodeOpt15 takes DHCP Opt 15 from a DHCP packet and adds an OTEL
 // key/value pair to the Encoder.Attributes. See https://www.iana.org/assignments/bootp-dhcp-parameters/bootp-dhcp-parameters.xhtml
-func (e *Encoder) EncodeOpt15(d *dhcpv4.DHCPv4, namespace string) error {
+func EncodeOpt15(d *dhcpv4.DHCPv4, namespace string) (attribute.KeyValue, error) {
 	key := fmt.Sprintf("%v.%v.Opt15.DomainName", keyNamespace, namespace)
 	if d != nil && d.DomainName() != "" {
-		e.Attributes = append(e.Attributes, attribute.String(key, d.DomainName()))
-		return nil
+		return attribute.String(key, d.DomainName()), nil
 	}
 
-	return &optNotFoundError{optName: key}
+	return attribute.KeyValue{}, &notFoundError{optName: key}
 }
 
 // EncodeOpt28 takes DHCP Opt 28 from a DHCP packet and adds an OTEL
 // key/value pair to the Encoder.Attributes. See https://www.iana.org/assignments/bootp-dhcp-parameters/bootp-dhcp-parameters.xhtml
-func (e *Encoder) EncodeOpt28(d *dhcpv4.DHCPv4, namespace string) error {
+func EncodeOpt28(d *dhcpv4.DHCPv4, namespace string) (attribute.KeyValue, error) {
 	key := fmt.Sprintf("%v.%v.Opt28.BroadcastAddress", keyNamespace, namespace)
 	if d != nil && d.BroadcastAddress() != nil {
-		e.Attributes = append(e.Attributes, attribute.String(key, d.BroadcastAddress().String()))
-		return nil
+		return attribute.String(key, d.BroadcastAddress().String()), nil
 	}
 
-	return &optNotFoundError{optName: key}
+	return attribute.KeyValue{}, &notFoundError{optName: key}
 }
 
 // EncodeOpt42 takes DHCP Opt 42 from a DHCP packet and adds an OTEL
 // key/value pair to the Encoder.Attributes. See https://www.iana.org/assignments/bootp-dhcp-parameters/bootp-dhcp-parameters.xhtml
-func (e *Encoder) EncodeOpt42(d *dhcpv4.DHCPv4, namespace string) error {
+func EncodeOpt42(d *dhcpv4.DHCPv4, namespace string) (attribute.KeyValue, error) {
 	key := fmt.Sprintf("%v.%v.Opt42.NTPServers", keyNamespace, namespace)
 	if d != nil {
 		var ntp []string
@@ -162,110 +162,101 @@ func (e *Encoder) EncodeOpt42(d *dhcpv4.DHCPv4, namespace string) error {
 			ntp = append(ntp, e.String())
 		}
 		if len(ntp) > 0 {
-			e.Attributes = append(e.Attributes, attribute.String(key, strings.Join(ntp, ",")))
-			return nil
+			return attribute.String(key, strings.Join(ntp, ",")), nil
 		}
 	}
 
-	return &optNotFoundError{optName: key}
+	return attribute.KeyValue{}, &notFoundError{optName: key}
 }
 
 // EncodeOpt51 takes DHCP Opt 51 from a DHCP packet and adds an OTEL
 // key/value pair to the Encoder.Attributes. See https://www.iana.org/assignments/bootp-dhcp-parameters/bootp-dhcp-parameters.xhtml
-func (e *Encoder) EncodeOpt51(d *dhcpv4.DHCPv4, namespace string) error {
+func EncodeOpt51(d *dhcpv4.DHCPv4, namespace string) (attribute.KeyValue, error) {
 	key := fmt.Sprintf("%v.%v.Opt51.LeaseTime", keyNamespace, namespace)
 	if d != nil && d.IPAddressLeaseTime(0) != 0 {
-		e.Attributes = append(e.Attributes, attribute.Float64(key, d.IPAddressLeaseTime(0).Seconds()))
-		return nil
+		return attribute.Float64(key, d.IPAddressLeaseTime(0).Seconds()), nil
 	}
 
-	return &optNotFoundError{optName: key}
+	return attribute.KeyValue{}, &notFoundError{optName: key}
 }
 
 // EncodeOpt53 takes DHCP Opt 53 from a DHCP packet and adds an OTEL
 // key/value pair to the Encoder.Attributes. See https://www.iana.org/assignments/bootp-dhcp-parameters/bootp-dhcp-parameters.xhtml
-func (e *Encoder) EncodeOpt53(d *dhcpv4.DHCPv4, namespace string) error {
+func EncodeOpt53(d *dhcpv4.DHCPv4, namespace string) (attribute.KeyValue, error) {
 	key := fmt.Sprintf("%v.%v.Opt53.MessageType", keyNamespace, namespace)
 	if d != nil && d.MessageType() != dhcpv4.MessageTypeNone {
-		e.Attributes = append(e.Attributes, attribute.String(key, d.MessageType().String()))
-		return nil
+		return attribute.String(key, d.MessageType().String()), nil
 	}
 
-	return &optNotFoundError{optName: key}
+	return attribute.KeyValue{}, &notFoundError{optName: key}
 }
 
 // EncodeOpt54 takes DHCP Opt 54 from a DHCP packet and adds an OTEL
 // key/value pair to the Encoder.Attributes. See https://www.iana.org/assignments/bootp-dhcp-parameters/bootp-dhcp-parameters.xhtml
-func (e *Encoder) EncodeOpt54(d *dhcpv4.DHCPv4, namespace string) error {
+func EncodeOpt54(d *dhcpv4.DHCPv4, namespace string) (attribute.KeyValue, error) {
 	key := fmt.Sprintf("%v.%v.Opt54.ServerIdentifier", keyNamespace, namespace)
 	if d != nil && d.ServerIdentifier() != nil {
-		e.Attributes = append(e.Attributes, attribute.String(key, d.ServerIdentifier().String()))
-		return nil
+		return attribute.String(key, d.ServerIdentifier().String()), nil
 	}
 
-	return &optNotFoundError{optName: key}
+	return attribute.KeyValue{}, &notFoundError{optName: key}
 }
 
 // EncodeOpt119 takes DHCP Opt 119 from a DHCP packet and adds an OTEL
 // key/value pair to the Encoder.Attributes. See https://www.iana.org/assignments/bootp-dhcp-parameters/bootp-dhcp-parameters.xhtml
-func (e *Encoder) EncodeOpt119(d *dhcpv4.DHCPv4, namespace string) error {
+func EncodeOpt119(d *dhcpv4.DHCPv4, namespace string) (attribute.KeyValue, error) {
 	key := fmt.Sprintf("%v.%v.Opt119.DomainSearch", keyNamespace, namespace)
 	if d != nil {
 		if l := d.DomainSearch(); l != nil {
-			e.Attributes = append(e.Attributes, attribute.String(key, strings.Join(l.Labels, ",")))
-			return nil
+			return attribute.String(key, strings.Join(l.Labels, ",")), nil
 		}
 	}
 
-	return &optNotFoundError{optName: key}
+	return attribute.KeyValue{}, &notFoundError{optName: key}
 }
 
 // EncodeYIADDR takes the yiaddr header from a DHCP packet and adds an OTEL
 // key/value pair to the Encoder.Attributes. See https://datatracker.ietf.org/doc/html/rfc2131#page-9
-func (e *Encoder) EncodeYIADDR(d *dhcpv4.DHCPv4, namespace string) error {
+func EncodeYIADDR(d *dhcpv4.DHCPv4, namespace string) (attribute.KeyValue, error) {
 	key := fmt.Sprintf("%v.%v.Header.yiaddr", keyNamespace, namespace)
 	if d != nil && d.YourIPAddr != nil {
-		e.Attributes = append(e.Attributes, attribute.String(key, d.YourIPAddr.String()))
-		return nil
+		return attribute.String(key, d.YourIPAddr.String()), nil
 	}
 
-	return &optNotFoundError{optName: key}
+	return attribute.KeyValue{}, &notFoundError{optName: key}
 }
 
 // EncodeSIADDR takes the siaddr header from a DHCP packet and adds an OTEL
 // key/value pair to the Encoder.Attributes. See https://datatracker.ietf.org/doc/html/rfc2131#page-9
-func (e *Encoder) EncodeSIADDR(d *dhcpv4.DHCPv4, namespace string) error {
+func EncodeSIADDR(d *dhcpv4.DHCPv4, namespace string) (attribute.KeyValue, error) {
 	key := fmt.Sprintf("%v.%v.Header.siaddr", keyNamespace, namespace)
 	if d != nil && d.ServerIPAddr != nil {
-		e.Attributes = append(e.Attributes, attribute.String(key, d.ServerIPAddr.String()))
-		return nil
+		return attribute.String(key, d.ServerIPAddr.String()), nil
 	}
 
-	return &optNotFoundError{optName: key}
+	return attribute.KeyValue{}, &notFoundError{optName: key}
 }
 
 // EncodeCHADDR takes the CHADDR header from a DHCP packet and adds an OTEL
 // key/value pair to the Encoder.Attributes. See https://datatracker.ietf.org/doc/html/rfc2131#page-9
-func (e *Encoder) EncodeCHADDR(d *dhcpv4.DHCPv4, namespace string) error {
+func EncodeCHADDR(d *dhcpv4.DHCPv4, namespace string) (attribute.KeyValue, error) {
 	key := fmt.Sprintf("%v.%v.Header.chaddr", keyNamespace, namespace)
 	if d != nil && d.ClientHWAddr != nil {
-		e.Attributes = append(e.Attributes, attribute.String(key, d.ClientHWAddr.String()))
-		return nil
+		return attribute.String(key, d.ClientHWAddr.String()), nil
 	}
 
-	return &optNotFoundError{optName: key}
+	return attribute.KeyValue{}, &notFoundError{optName: key}
 }
 
 // EncodeFILE takes the file header from a DHCP packet and adds an OTEL
 // key/value pair to the Encoder.Attributes. See https://datatracker.ietf.org/doc/html/rfc2131#page-9
-func (e *Encoder) EncodeFILE(d *dhcpv4.DHCPv4, namespace string) error {
+func EncodeFILE(d *dhcpv4.DHCPv4, namespace string) (attribute.KeyValue, error) {
 	key := fmt.Sprintf("%v.%v.Header.file", keyNamespace, namespace)
 	if d != nil && d.BootFileName != "" {
-		e.Attributes = append(e.Attributes, attribute.String(key, d.BootFileName))
-		return nil
+		return attribute.String(key, d.BootFileName), nil
 	}
 
-	return &optNotFoundError{optName: key}
+	return attribute.KeyValue{}, &notFoundError{optName: key}
 }
 
 // TraceparentFromContext extracts the binary trace id, span id, and trace flags

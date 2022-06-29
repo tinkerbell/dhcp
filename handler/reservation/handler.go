@@ -217,13 +217,6 @@ func (h *Handler) isNetbootClient(pkt *dhcpv4.DHCPv4) bool {
 func (h *Handler) encodeToAttributes(d *dhcpv4.DHCPv4, namespace string) []attribute.KeyValue {
 	h.setDefaults()
 	a := &oteldhcp.Encoder{Log: h.Log}
-	all := []func(d *dhcpv4.DHCPv4, namespace string) error{
-		a.EncodeYIADDR, a.EncodeSIADDR,
-		a.EncodeCHADDR, a.EncodeFILE,
-		a.EncodeOpt1, a.EncodeOpt3, a.EncodeOpt6,
-		a.EncodeOpt12, a.EncodeOpt15, a.EncodeOpt28,
-		a.EncodeOpt42, a.EncodeOpt51, a.EncodeOpt53,
-		a.EncodeOpt54, a.EncodeOpt119,
-	}
-	return a.Encode(d, namespace, all...)
+
+	return a.Encode(d, namespace, oteldhcp.AllEncoders()...)
 }
