@@ -8,9 +8,11 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	"github.com/google/go-cmp/cmp"
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/insomniacslk/dhcp/dhcpv4/nclient4"
 	"github.com/tinkerbell/dhcp/handler/noop"
+	"golang.org/x/net/nettest"
 	"inet.af/netaddr"
 )
 
@@ -67,8 +69,15 @@ func (m *mock) setOpts() []dhcpv4.Modifier {
 	return mods
 }
 
-func dhcp(ctx context.Context, ifname string) (*dhcpv4.DHCPv4, error) {
-	c, err := nclient4.New(ifname)
+func dhcp(ctx context.Context) (*dhcpv4.DHCPv4, error) {
+	rifs, err := nettest.RoutedInterface("ip", net.FlagUp|net.FlagBroadcast)
+	if err != nil {
+		return nil, err
+	}
+	c, err := nclient4.New(rifs.Name,
+		nclient4.WithServerAddr(&net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 7676}),
+		nclient4.WithUnicast(&net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 7677}),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -78,14 +87,13 @@ func dhcp(ctx context.Context, ifname string) (*dhcpv4.DHCPv4, error) {
 }
 
 func TestListenAndServe(t *testing.T) {
-	t.Skip()
 	// test if the server is listening on the correct address and port
 	tests := map[string]struct {
 		h            Handler
 		addr         netaddr.IPPort
 		wantListener *Listener
 	}{
-		"success": {addr: netaddr.IPPortFrom(netaddr.IPv4(0, 0, 0, 0), 7676), h: &mock{}},
+		"success": {addr: netaddr.IPPortFrom(netaddr.IPv4(127, 0, 0, 1), 7676), h: &mock{}},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -101,12 +109,13 @@ func TestListenAndServe(t *testing.T) {
 			go s.ListenAndServe(tt.h)
 
 			// make client calls
-			d, err := dhcp(ctx, "eth0")
+			d, err := dhcp(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
 			t.Log(d)
-			t.Log(err)
 
 			done()
-			t.Fatal()
 		})
 	}
 }
@@ -117,9 +126,10 @@ func TestListenerAndServe(t *testing.T) {
 		addr netaddr.IPPort
 		err  error
 	}{
-		"noop handler": {h: &noop.Handler{}, addr: netaddr.IPPortFrom(netaddr.IPv4(0, 0, 0, 0), 7676)},
-		"no handler":   {addr: netaddr.IPPortFrom(netaddr.IPv4(0, 0, 0, 0), 7678)},
-		"mock handler": {h: &mock{}, addr: netaddr.IPPortFrom(netaddr.IPv4(0, 0, 0, 0), 7678)},
+		"noop handler":             {h: &noop.Handler{}, addr: netaddr.IPPortFrom(netaddr.IPv4(0, 0, 0, 0), 7678)},
+		"no handler":               {addr: netaddr.IPPortFrom(netaddr.IPv4(0, 0, 0, 0), 7678)},
+		"mock handler":             {h: &mock{}, addr: netaddr.IPPortFrom(netaddr.IPv4(0, 0, 0, 0), 7678)},
+		"success use default addr": {h: &mock{}},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -137,7 +147,8 @@ func TestListenerAndServe(t *testing.T) {
 			switch err.(type) {
 			case *net.OpError:
 			default:
-				if !errors.Is(err, ErrNoConn) {
+				if err.Error() != "failed to create udp connection: cannot bind to port 67: permission denied" && !errors.Is(err, ErrNoConn) {
+					t.Log(err)
 					t.Fatalf("got: %T, wanted: %T or ErrNoConn", err, &net.OpError{})
 				}
 			}
@@ -175,5 +186,13 @@ func TestServe(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestNoConnError(t *testing.T) {
+	want := "no connection specified"
+	got := ErrNoConn
+	if diff := cmp.Diff(got.Error(), want); diff != "" {
+		t.Fatal(diff)
 	}
 }
