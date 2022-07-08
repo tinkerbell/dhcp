@@ -67,7 +67,7 @@ func TestSetOpt1(t *testing.T) {
 	}{
 		"success": {
 			input: &dhcpv4.DHCPv4{Options: dhcpv4.OptionsFromList(
-				dhcpv4.OptSubnetMask(net.IP{255, 255, 255, 0}.DefaultMask()),
+				dhcpv4.OptSubnetMask(net.IPMask(net.IP{255, 255, 255, 0}.To4())),
 			)},
 			want: attribute.String("DHCP.testing.Opt1.SubnetMask", "255.255.255.0"),
 		},
