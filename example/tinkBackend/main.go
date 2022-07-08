@@ -19,6 +19,7 @@ import (
 	"github.com/go-logr/stdr"
 	"github.com/tinkerbell/dhcp"
 	"github.com/tinkerbell/dhcp/backend/tink"
+	"github.com/tinkerbell/dhcp/handler/reservation"
 	"github.com/tinkerbell/tink/protos/hardware"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -35,25 +36,31 @@ func main() {
 	tinkIP := "127.0.0.1"
 	flag.StringVar(&tinkIP, "ip", tinkIP, "IP address of the tink server")
 	flag.Parse()
-	b, client, err := tinkBackend(ctx, l, tinkIP, time.Second*10)
+	backend, client, err := tinkBackend(ctx, l, tinkIP, time.Second*10)
 	if err != nil {
 		panic(err)
 	}
 	defer client.Close() // nolint: errcheck // ok for an example file?
 
-	s := &dhcp.Server{
-		Log:               l,
-		Listener:          netaddr.IPPortFrom(netaddr.IPv4(192, 168, 2, 225), 67),
-		IPAddr:            netaddr.IPv4(192, 168, 2, 225),
-		IPXEBinServerTFTP: netaddr.IPPortFrom(netaddr.IPv4(192, 168, 1, 34), 69),
-		IPXEBinServerHTTP: &url.URL{Scheme: "http", Host: "192.168.1.34:8080"},
-		IPXEScriptURL:     &url.URL{Scheme: "https", Host: "boot.netboot.xyz"},
-		NetbootEnabled:    true,
-		OTELEnabled:       true,
-		Backend:           b,
+	handler := &reservation.Handler{
+		Log:    l,
+		IPAddr: netaddr.IPv4(192, 168, 2, 225),
+		Netboot: reservation.Netboot{
+			IPXEBinServerTFTP: netaddr.IPPortFrom(netaddr.IPv4(192, 168, 1, 34), 69),
+			IPXEBinServerHTTP: &url.URL{Scheme: "http", Host: "192.168.1.34:8080"},
+			IPXEScriptURL:     &url.URL{Scheme: "https", Host: "boot.netboot.xyz"},
+			Enabled:           true,
+		},
+		OTELEnabled: true,
+		Backend:     backend,
 	}
-	l.Info("starting server", "addr", s.Listener, "tinkIP", tinkIP)
-	l.Error(s.ListenAndServe(ctx), "done")
+	listener := &dhcp.Listener{}
+	go func() {
+		<-ctx.Done()
+		l.Error(listener.Shutdown(), "shutting down server")
+	}()
+	l.Info("starting server", "addr", handler.IPAddr)
+	l.Error(listener.ListenAndServe(handler), "done")
 	l.Info("done")
 }
 
