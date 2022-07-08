@@ -11,6 +11,8 @@ import (
 	"github.com/tinkerbell/dhcp/data"
 	"github.com/tinkerbell/tink/pkg/apis/core/v1alpha1"
 	"github.com/tinkerbell/tink/pkg/controllers"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/codes"
 	"inet.af/netaddr"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -18,6 +20,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/cluster"
 )
+
+const tracerName = "github.com/tinkerbell/dhcp"
 
 // Backend is a backend implementation that uses the Tinkerbell CRDs to get DHCP data.
 type Backend struct {
@@ -62,18 +66,29 @@ func (b *Backend) StartCache(ctx context.Context) error {
 
 // Read implements the Backend interfaces and  returns DHCP and netboot data.
 func (b *Backend) Read(ctx context.Context, mac net.HardwareAddr) (*data.DHCP, *data.Netboot, error) {
+	tracer := otel.Tracer(tracerName)
+	ctx, span := tracer.Start(ctx, "backend.kube.Read")
+	defer span.End()
 	hardwareList := &v1alpha1.HardwareList{}
 
 	if err := b.cluster.GetClient().List(ctx, hardwareList, &client.MatchingFields{controllers.HardwareMACAddrIndex: mac.String()}); err != nil {
+		span.SetStatus(codes.Error, err.Error())
+
 		return nil, nil, fmt.Errorf("failed listing hardware: %w", err)
 	}
 
 	if len(hardwareList.Items) == 0 {
-		return nil, nil, errors.New("no hardware found")
+		err := errors.New("no hardware found")
+		span.SetStatus(codes.Error, err.Error())
+
+		return nil, nil, err
 	}
 
 	if len(hardwareList.Items) > 1 {
-		return nil, nil, fmt.Errorf("got %d hardware objects for mac %s, expected only 1", len(hardwareList.Items), mac)
+		err := fmt.Errorf("got %d hardware objects for mac %s, expected only 1", len(hardwareList.Items), mac)
+		span.SetStatus(codes.Error, err.Error())
+
+		return nil, nil, err
 	}
 
 	i := v1alpha1.Interface{}
@@ -86,12 +101,22 @@ func (b *Backend) Read(ctx context.Context, mac net.HardwareAddr) (*data.DHCP, *
 
 	d, err := toDHCPData(i.DHCP)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to convert hardware to DHCP data: %w", err)
+		err = fmt.Errorf("failed to convert hardware to DHCP data: %w", err)
+		span.SetStatus(codes.Error, err.Error())
+
+		return nil, nil, err
 	}
 	n, err := toNetbootData(i.Netboot)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to convert hardware to netboot data: %w", err)
+		err = fmt.Errorf("failed to convert hardware to netboot data: %w", err)
+		span.SetStatus(codes.Error, err.Error())
+
+		return nil, nil, err
 	}
+
+	span.SetAttributes(d.EncodeToAttributes()...)
+	span.SetAttributes(n.EncodeToAttributes()...)
+	span.SetStatus(codes.Ok, "")
 
 	return d, n, nil
 }
