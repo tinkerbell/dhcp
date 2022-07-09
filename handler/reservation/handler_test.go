@@ -487,7 +487,10 @@ func TestEncodeToAttributes(t *testing.T) {
 	}{
 		"success": {
 			input: &dhcpv4.DHCPv4{BootFileName: "snp.efi"},
-			want:  []attribute.KeyValue{attribute.String("DHCP.testing.Header.file", "snp.efi")},
+			want: []attribute.KeyValue{
+				attribute.String("DHCP.testing.Header.file", "snp.efi"),
+				attribute.String("DHCP.testing.Header.flags", "Unicast"),
+			},
 		},
 		"error": {},
 	}
