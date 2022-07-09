@@ -54,6 +54,7 @@ func (h *Handler) Handle(conn net.PacketConn, peer net.Addr, pkt *dhcpv4.DHCPv4)
 	ctx, span := tracer.Start(context.Background(),
 		fmt.Sprintf("DHCP Packet Received: %v", pkt.MessageType().String()),
 		trace.WithAttributes(h.encodeToAttributes(pkt, "request")...),
+		trace.WithAttributes(attribute.String("DHCP.peer", peer.String())),
 	)
 	defer span.End()
 
@@ -153,14 +154,17 @@ func (h *Handler) updateMsg(ctx context.Context, pkt *dhcpv4.DHCPv4, d *data.DHC
 }
 
 // isNetbootClient returns true if the client is a valid netboot client.
-// A valid netboot client will have the following in its DHCP request:
-// http://www.pix.net/software/pxeboot/archive/pxespec.pdf
 //
+// A valid netboot client will have the following in its DHCP request:
 // 1. is a DHCP discovery/request message type.
 // 2. option 93 is set.
 // 3. option 94 is set.
 // 4. option 97 is correct length.
 // 5. option 60 is set with this format: "PXEClient:Arch:xxxxx:UNDI:yyyzzz" or "HTTPClient:Arch:xxxxx:UNDI:yyyzzz".
+//
+// See: http://www.pix.net/software/pxeboot/archive/pxespec.pdf
+//
+// See: https://www.rfc-editor.org/rfc/rfc4578.html
 func (h *Handler) isNetbootClient(pkt *dhcpv4.DHCPv4) bool {
 	h.setDefaults()
 	// only response to DISCOVER and REQUEST packets
