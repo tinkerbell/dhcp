@@ -10,7 +10,7 @@ test: ## run unit tests
 
 .PHONY: cover
 cover: ## Run unit tests with coverage report
-	go test -coverprofile=coverage.out ./... || true
+	go test -race -coverprofile=coverage.out -covermode=atomic ./... || true
 	go tool cover -func=coverage.out
 
 .PHONY: build-linux

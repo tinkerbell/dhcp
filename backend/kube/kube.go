@@ -32,7 +32,7 @@ type Backend struct {
 // scheme registered, and indexers for:
 // * Hardware by MAC address
 //
-// Callers must instantiate the client-side cache by calling Start() before use.
+// Callers must instantiate the client-side cache by calling StartCache() before use.
 func NewBackend(conf *rest.Config, opts ...cluster.Option) (*Backend, error) {
 	rs := runtime.NewScheme()
 
@@ -125,7 +125,6 @@ func (b *Backend) Read(ctx context.Context, mac net.HardwareAddr) (*data.DHCP, *
 // if required fields are missing, an error is returned.
 // Required fields: v1alpha1.Interface.DHCP.MAC, v1alpha1.Interface.DHCP.IP.Address, v1alpha1.Interface.DHCP.IP.Netmask.
 func toDHCPData(h *v1alpha1.DHCP) (*data.DHCP, error) {
-	fmt.Printf("h: %+v\n", h)
 	if h == nil {
 		return nil, errors.New("no DHCP data")
 	}
@@ -190,7 +189,6 @@ func toNetbootData(i *v1alpha1.Netboot) (*data.Netboot, error) {
 	// ipxe script url is optional but if provided, it must be a valid url
 	if i.IPXE != nil {
 		if i.IPXE.URL != "" {
-			fmt.Println("i.IPXE.URL", i.IPXE.URL)
 			u, err := url.ParseRequestURI(i.IPXE.URL)
 			if err != nil {
 				return nil, err
