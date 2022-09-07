@@ -94,7 +94,7 @@ func TestHandle(t *testing.T) {
 					dhcpv4.OptMessageType(dhcpv4.MessageTypeOffer),
 					dhcpv4.OptServerIdentifier(net.IP{127, 0, 0, 1}),
 					dhcpv4.OptIPAddressLeaseTime(time.Minute),
-					dhcpv4.OptSubnetMask(net.IP{255, 255, 255, 0}.DefaultMask()),
+					dhcpv4.OptSubnetMask(net.IPMask(net.IP{255, 255, 255, 0}.To4())),
 					dhcpv4.OptRouter([]net.IP{{192, 168, 1, 1}}...),
 					dhcpv4.OptDNS([]net.IP{{1, 1, 1, 1}}...),
 					dhcpv4.OptDomainName("mydomain.com"),
@@ -135,7 +135,7 @@ func TestHandle(t *testing.T) {
 					dhcpv4.OptMessageType(dhcpv4.MessageTypeRequest),
 					dhcpv4.OptServerIdentifier(net.IP{127, 0, 0, 1}),
 					dhcpv4.OptIPAddressLeaseTime(time.Minute),
-					dhcpv4.OptSubnetMask(net.IP{255, 255, 255, 0}.DefaultMask()),
+					dhcpv4.OptSubnetMask(net.IPMask(net.IP{255, 255, 255, 0}.To4())),
 					dhcpv4.OptRouter([]net.IP{{192, 168, 1, 1}}...),
 					dhcpv4.OptDNS([]net.IP{{1, 1, 1, 1}}...),
 					dhcpv4.OptDomainName("mydomain.com"),
@@ -156,7 +156,7 @@ func TestHandle(t *testing.T) {
 					dhcpv4.OptMessageType(dhcpv4.MessageTypeAck),
 					dhcpv4.OptServerIdentifier(net.IP{127, 0, 0, 1}),
 					dhcpv4.OptIPAddressLeaseTime(time.Minute),
-					dhcpv4.OptSubnetMask(net.IP{255, 255, 255, 0}.DefaultMask()),
+					dhcpv4.OptSubnetMask(net.IPMask(net.IP{255, 255, 255, 0}.To4())),
 					dhcpv4.OptRouter([]net.IP{{192, 168, 1, 1}}...),
 					dhcpv4.OptDNS([]net.IP{{1, 1, 1, 1}}...),
 					dhcpv4.OptDomainName("mydomain.com"),
@@ -300,7 +300,7 @@ func TestUpdateMsg(t *testing.T) {
 						dhcpv4.OptMessageType(dhcpv4.MessageTypeDiscover),
 					),
 				},
-				data:    &data.DHCP{IPAddress: netaddr.IPv4(192, 168, 1, 100), SubnetMask: net.IP{255, 255, 255, 0}.DefaultMask()},
+				data:    &data.DHCP{IPAddress: netaddr.IPv4(192, 168, 1, 100), SubnetMask: net.IPMask(net.IP{255, 255, 255, 0}.To4())},
 				netboot: &data.Netboot{AllowNetboot: true, IPXEScriptURL: &url.URL{Scheme: "http", Host: "localhost:8181", Path: "auto.ipxe"}},
 				msg:     dhcpv4.MessageTypeDiscover,
 			},
@@ -314,7 +314,7 @@ func TestUpdateMsg(t *testing.T) {
 					dhcpv4.OptMessageType(dhcpv4.MessageTypeDiscover),
 					dhcpv4.OptServerIdentifier(net.IP{127, 0, 0, 1}),
 					dhcpv4.OptIPAddressLeaseTime(3600),
-					dhcpv4.OptSubnetMask(net.IP{255, 255, 255, 0}.DefaultMask()),
+					dhcpv4.OptSubnetMask(net.IPMask(net.IP{255, 255, 255, 0}.To4())),
 					dhcpv4.OptClassIdentifier("HTTPClient"),
 					dhcpv4.OptGeneric(dhcpv4.OptionVendorSpecificInformation, dhcpv4.Options{
 						6:  []byte{8},
@@ -487,7 +487,10 @@ func TestEncodeToAttributes(t *testing.T) {
 	}{
 		"success": {
 			input: &dhcpv4.DHCPv4{BootFileName: "snp.efi"},
-			want:  []attribute.KeyValue{attribute.String("DHCP.testing.Header.file", "snp.efi")},
+			want: []attribute.KeyValue{
+				attribute.String("DHCP.testing.Header.file", "snp.efi"),
+				attribute.String("DHCP.testing.Header.flags", "Unicast"),
+			},
 		},
 		"error": {},
 	}

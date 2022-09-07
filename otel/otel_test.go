@@ -10,6 +10,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/insomniacslk/dhcp/dhcpv4"
+	"github.com/insomniacslk/dhcp/iana"
 	"github.com/insomniacslk/dhcp/rfc1035label"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -22,7 +23,8 @@ func TestEncode(t *testing.T) {
 		want        []attribute.KeyValue
 	}{
 		"no encoders": {pkt: &dhcpv4.DHCPv4{}, want: nil},
-		"all encoders": {allEncoders: true, pkt: &dhcpv4.DHCPv4{BootFileName: "ipxe.efi"}, want: []attribute.KeyValue{
+		"all encoders": {allEncoders: true, pkt: &dhcpv4.DHCPv4{BootFileName: "ipxe.efi", Flags: 0}, want: []attribute.KeyValue{
+			{Key: attribute.Key("DHCP.test.Header.flags"), Value: attribute.StringValue("Unicast")},
 			{Key: attribute.Key("DHCP.test.Header.file"), Value: attribute.StringValue("ipxe.efi")},
 		}},
 	}
@@ -67,7 +69,7 @@ func TestSetOpt1(t *testing.T) {
 	}{
 		"success": {
 			input: &dhcpv4.DHCPv4{Options: dhcpv4.OptionsFromList(
-				dhcpv4.OptSubnetMask(net.IP{255, 255, 255, 0}.DefaultMask()),
+				dhcpv4.OptSubnetMask(net.IPMask(net.IP{255, 255, 255, 0}.To4())),
 			)},
 			want: attribute.String("DHCP.testing.Opt1.SubnetMask", "255.255.255.0"),
 		},
@@ -329,6 +331,117 @@ func TestSetOpt54(t *testing.T) {
 	}
 }
 
+func TestSetOpt60(t *testing.T) {
+	tests := map[string]struct {
+		input   *dhcpv4.DHCPv4
+		want    attribute.KeyValue
+		wantErr error
+	}{
+		"success": {
+			input: &dhcpv4.DHCPv4{Options: dhcpv4.OptionsFromList(
+				dhcpv4.OptClassIdentifier("foobar"),
+			)},
+			want: attribute.String("DHCP.testing.Opt60.ClassIdentifier", "foobar"),
+		},
+		"error": {wantErr: &notFoundError{}},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			got, err := EncodeOpt60(tt.input, "testing")
+			if tt.wantErr != nil && !OptNotFound(err) {
+				t.Fatalf("setOpt60() error (type: %T) = %[1]v, wantErr (type: %T) %[2]v", err, tt.wantErr)
+			}
+			if diff := cmp.Diff(got, tt.want, cmpopts.IgnoreUnexported(attribute.Value{})); diff != "" {
+				t.Fatal(diff)
+			}
+		})
+	}
+}
+
+func TestSetOpt93(t *testing.T) {
+	tests := map[string]struct {
+		input   *dhcpv4.DHCPv4
+		want    attribute.KeyValue
+		wantErr error
+	}{
+		"success": {
+			input: &dhcpv4.DHCPv4{Options: dhcpv4.OptionsFromList(
+				dhcpv4.OptClientArch(iana.INTEL_X86PC),
+			)},
+			want: attribute.StringSlice("DHCP.testing.Opt93.ClientIdentifier", []string{"Intel x86PC"}),
+		},
+		"error": {wantErr: &notFoundError{}},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			got, err := EncodeOpt93(tt.input, "testing")
+			if tt.wantErr != nil && !OptNotFound(err) {
+				t.Fatalf("setOpt93() error (type: %T) = %[1]v, wantErr (type: %T) %[2]v", err, tt.wantErr)
+			}
+			if diff := cmp.Diff(got, tt.want, cmpopts.IgnoreUnexported(attribute.Value{})); diff != "" {
+				t.Log(tt.input.ClientArch())
+				t.Fatal(diff)
+			}
+		})
+	}
+}
+
+func TestSetOpt94(t *testing.T) {
+	tests := map[string]struct {
+		input   *dhcpv4.DHCPv4
+		want    attribute.KeyValue
+		wantErr error
+	}{
+		"success": {
+			input: &dhcpv4.DHCPv4{Options: dhcpv4.OptionsFromList(
+				dhcpv4.OptGeneric(dhcpv4.OptionClientNetworkInterfaceIdentifier, []byte{0x01, 0x02, 0x01}),
+			)},
+			want: attribute.String("DHCP.testing.Opt94.ClientNetworkInterfaceIdentifier", "1.2.1"),
+		},
+		"error": {wantErr: &notFoundError{}},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			got, err := EncodeOpt94(tt.input, "testing")
+			if tt.wantErr != nil && !OptNotFound(err) {
+				t.Fatalf("setOpt94() error (type: %T) = %[1]v, wantErr (type: %T) %[2]v", err, tt.wantErr)
+			}
+			if diff := cmp.Diff(got, tt.want, cmpopts.IgnoreUnexported(attribute.Value{})); diff != "" {
+				t.Log(tt.input.ClientArch())
+				t.Fatal(diff)
+			}
+		})
+	}
+}
+
+func TestSetOpt97(t *testing.T) {
+	tests := map[string]struct {
+		input   *dhcpv4.DHCPv4
+		want    attribute.KeyValue
+		wantErr error
+	}{
+		"success": {
+			input: &dhcpv4.DHCPv4{Options: dhcpv4.OptionsFromList(
+				dhcpv4.OptGeneric(dhcpv4.OptionClientMachineIdentifier, []byte{0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10}),
+			)},
+			want: attribute.String("DHCP.testing.Opt97.ClientMachineIdentifier", "0.1.2.3.4.5.6.7.8.9.10.11.12.13.14.15.16"),
+		},
+		"error": {wantErr: &notFoundError{}},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			got, err := EncodeOpt97(tt.input, "testing")
+			if tt.wantErr != nil && !OptNotFound(err) {
+				t.Fatalf("setOpt97() error (type: %T) = %[1]v, wantErr (type: %T) %[2]v", err, tt.wantErr)
+			}
+			if diff := cmp.Diff(got, tt.want, cmpopts.IgnoreUnexported(attribute.Value{})); diff != "" {
+				t.Log(tt.input.GetOneOption(dhcpv4.OptionClientMachineIdentifier))
+				t.Fatal(diff)
+			}
+		})
+	}
+}
+
 func TestSetOpt119(t *testing.T) {
 	tests := map[string]struct {
 		input   *dhcpv4.DHCPv4
@@ -348,6 +461,31 @@ func TestSetOpt119(t *testing.T) {
 			got, err := EncodeOpt119(tt.input, "testing")
 			if tt.wantErr != nil && !OptNotFound(err) {
 				t.Fatalf("setOpt119() error (type: %T) = %[1]v, wantErr (type: %T) %[2]v", err, tt.wantErr)
+			}
+			if diff := cmp.Diff(got, tt.want, cmpopts.IgnoreUnexported(attribute.Value{})); diff != "" {
+				t.Fatal(diff)
+			}
+		})
+	}
+}
+
+func TestSetHeaderFlags(t *testing.T) {
+	tests := map[string]struct {
+		input   *dhcpv4.DHCPv4
+		want    attribute.KeyValue
+		wantErr error
+	}{
+		"success": {
+			input: &dhcpv4.DHCPv4{},
+			want:  attribute.String("DHCP.testing.Header.flags", "Unicast"),
+		},
+		"error": {wantErr: &notFoundError{}},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			got, err := EncodeFlags(tt.input, "testing")
+			if tt.wantErr != nil && !OptNotFound(err) {
+				t.Fatalf("setHeaderFlags() error (type: %T) = %[1]v, wantErr (type: %T) %[2]v", err, tt.wantErr)
 			}
 			if diff := cmp.Diff(got, tt.want, cmpopts.IgnoreUnexported(attribute.Value{})); diff != "" {
 				t.Fatal(diff)

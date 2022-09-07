@@ -185,11 +185,11 @@ func (w *Watcher) translate(r dhcp) (*data.DHCP, *data.Netboot, error) {
 	d.IPAddress = ip
 
 	// subnet mask, required
-	sm, err := netaddr.ParseIP(r.SubnetMask)
-	if err != nil {
-		return nil, nil, fmt.Errorf("%v: %w", err, errParseSubnet)
+	sm := net.ParseIP(r.SubnetMask)
+	if sm == nil {
+		return nil, nil, errParseSubnet
 	}
-	d.SubnetMask = sm.IPAddr().IP.DefaultMask()
+	d.SubnetMask = net.IPMask(sm.To4())
 
 	// default gateway, optional
 	if dg, err := netaddr.ParseIP(r.DefaultGateway); err != nil {
