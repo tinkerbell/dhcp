@@ -32,7 +32,7 @@ type Backend struct {
 // scheme registered, and indexers for:
 // * Hardware by MAC address
 //
-// Callers must instantiate the client-side cache by calling StartCache() before use.
+// Callers must instantiate the client-side cache by calling Start() before use.
 func NewBackend(conf *rest.Config, opts ...cluster.Option) (*Backend, error) {
 	rs := runtime.NewScheme()
 
@@ -59,8 +59,8 @@ func NewBackend(conf *rest.Config, opts ...cluster.Option) (*Backend, error) {
 	return &Backend{cluster: c}, nil
 }
 
-// StartCache starts the client-side cache.
-func (b *Backend) StartCache(ctx context.Context) error {
+// Start starts the client-side cache.
+func (b *Backend) Start(ctx context.Context) error {
 	return b.cluster.Start(ctx)
 }
 

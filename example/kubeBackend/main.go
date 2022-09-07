@@ -79,7 +79,7 @@ func kubeBackend(ctx context.Context) (reservation.BackendReader, error) {
 	}
 
 	go func() {
-		_ = k.StartCache(ctx)
+		_ = k.Start(ctx)
 	}()
 
 	return k, nil

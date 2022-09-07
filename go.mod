@@ -11,7 +11,7 @@ require (
 	github.com/google/go-cmp v0.5.7
 	github.com/imdario/mergo v0.3.12
 	github.com/insomniacslk/dhcp v0.0.0-20220119180841-3c283ff8b7dd
-	github.com/tinkerbell/tink v0.6.1-0.20220621192805-fe1eba2dbc2d
+	github.com/tinkerbell/tink v0.7.0
 	github.com/tonglil/buflogr v0.0.0-20220413082439-d4c2784244cd
 	go.opentelemetry.io/otel v1.4.0
 	go.opentelemetry.io/otel/trace v1.4.0

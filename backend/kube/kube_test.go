@@ -239,7 +239,7 @@ func TestRead(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			go b.StartCache(context.Background())
+			go b.Start(context.Background())
 			gotDHCP, gotNetboot, err := b.Read(context.Background(), net.HardwareAddr{0x3c, 0xec, 0xef, 0x4c, 0x4f, 0x54})
 			if tc.shouldErr && err == nil {
 				t.Log(err)

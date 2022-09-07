@@ -1317,8 +1317,8 @@ github.com/tetafro/godot v1.4.7/go.mod h1:LR3CJpxDVGlYOWn3ZZg1PgNZdTUvzsZWu8xaEo
 github.com/tidwall/pretty v1.0.0/go.mod h1:XNkn88O1ChpSDQmQeStsy+sBenx6DDtFZJxhVysOjyk=
 github.com/timakin/bodyclose v0.0.0-20200424151742-cb6215831a94/go.mod h1:Qimiffbc6q9tBWlVV6x0P9sat/ao1xEkREYPPj9hphk=
 github.com/tinkerbell/lint-install v0.0.0-20220502172532-2fdfa62596af/go.mod h1:xW1I8Nqsc88qG0zmPLcbQqHE1Co8eo628OJMRerLHFM=
-github.com/tinkerbell/tink v0.6.1-0.20220621192805-fe1eba2dbc2d h1:IJuY7ioYyqNuIXuBno4E6IUP49PXP3d9JoZ0hznHunA=
-github.com/tinkerbell/tink v0.6.1-0.20220621192805-fe1eba2dbc2d/go.mod h1:px5E+SccP2xvZRnHHf8smb8vtKnroXXwx7lGg30igS8=
+github.com/tinkerbell/tink v0.7.0 h1:s8CxXYAbTtgzsTdsq1f1ovtVW6IMlmXh6RutfdgB0Sg=
+github.com/tinkerbell/tink v0.7.0/go.mod h1:px5E+SccP2xvZRnHHf8smb8vtKnroXXwx7lGg30igS8=
 github.com/tj/assert v0.0.0-20171129193455-018094318fb0/go.mod h1:mZ9/Rh9oLWpLLDRpvE+3b7gP/C2YyLFYxNmcLnPTMe0=
 github.com/tj/assert v0.0.3/go.mod h1:Ne6X72Q+TB1AteidzQncjw9PabbMp4PBMZ1k+vd1Pvk=
 github.com/tj/go-buffer v1.1.0/go.mod h1:iyiJpfFcR2B9sXu7KvjbT9fpM4mOelRSDTbntVj52Uc=
