@@ -64,10 +64,10 @@ func (b *Backend) Start(ctx context.Context) error {
 	return b.cluster.Start(ctx)
 }
 
-// Read implements the Backend interfaces and  returns DHCP and netboot data.
-func (b *Backend) Read(ctx context.Context, mac net.HardwareAddr) (*data.DHCP, *data.Netboot, error) {
+// GetByMac implements the handler.BackendReader interface and returns DHCP and netboot data based on a mac address.
+func (b *Backend) GetByMac(ctx context.Context, mac net.HardwareAddr) (*data.DHCP, *data.Netboot, error) {
 	tracer := otel.Tracer(tracerName)
-	ctx, span := tracer.Start(ctx, "backend.kube.Read")
+	ctx, span := tracer.Start(ctx, "backend.kube.GetByMac")
 	defer span.End()
 	hardwareList := &v1alpha1.HardwareList{}
 
@@ -94,6 +94,63 @@ func (b *Backend) Read(ctx context.Context, mac net.HardwareAddr) (*data.DHCP, *
 	i := v1alpha1.Interface{}
 	for _, iface := range hardwareList.Items[0].Spec.Interfaces {
 		if iface.DHCP.MAC == mac.String() {
+			i = iface
+			break
+		}
+	}
+
+	d, err := toDHCPData(i.DHCP)
+	if err != nil {
+		err = fmt.Errorf("failed to convert hardware to DHCP data: %w", err)
+		span.SetStatus(codes.Error, err.Error())
+
+		return nil, nil, err
+	}
+	n, err := toNetbootData(i.Netboot)
+	if err != nil {
+		err = fmt.Errorf("failed to convert hardware to netboot data: %w", err)
+		span.SetStatus(codes.Error, err.Error())
+
+		return nil, nil, err
+	}
+
+	span.SetAttributes(d.EncodeToAttributes()...)
+	span.SetAttributes(n.EncodeToAttributes()...)
+	span.SetStatus(codes.Ok, "")
+
+	return d, n, nil
+}
+
+// GetByIP implements the handler.BackendReader interface and returns DHCP and netboot data based on an IP address.
+func (b *Backend) GetByIP(ctx context.Context, ip net.IP) (*data.DHCP, *data.Netboot, error) {
+	tracer := otel.Tracer(tracerName)
+	ctx, span := tracer.Start(ctx, "backend.kube.GetByIP")
+	defer span.End()
+	hardwareList := &v1alpha1.HardwareList{}
+
+	if err := b.cluster.GetClient().List(ctx, hardwareList, &client.MatchingFields{controllers.HardwareIPAddrIndex: ip.String()}); err != nil {
+		span.SetStatus(codes.Error, err.Error())
+
+		return nil, nil, fmt.Errorf("failed listing hardware: %w", err)
+	}
+
+	if len(hardwareList.Items) == 0 {
+		err := errors.New("no hardware found")
+		span.SetStatus(codes.Error, err.Error())
+
+		return nil, nil, err
+	}
+
+	if len(hardwareList.Items) > 1 {
+		err := fmt.Errorf("got %d hardware objects for mac %s, expected only 1", len(hardwareList.Items), ip)
+		span.SetStatus(codes.Error, err.Error())
+
+		return nil, nil, err
+	}
+
+	i := v1alpha1.Interface{}
+	for _, iface := range hardwareList.Items[0].Spec.Interfaces {
+		if iface.DHCP.IP.Address == ip.String() {
 			i = iface
 			break
 		}
@@ -171,6 +228,12 @@ func toDHCPData(h *v1alpha1.DHCP) (*data.DHCP, error) {
 	// lease time required
 	d.LeaseTime = uint32(h.LeaseTime)
 
+	// arch
+	d.Arch = h.Arch
+
+	// vlanid
+	d.VLANID = h.VLANID
+
 	return d, nil
 }
 
@@ -196,6 +259,15 @@ func toNetbootData(i *v1alpha1.Netboot) (*data.Netboot, error) {
 			n.IPXEScriptURL = u
 		}
 	}
+
+	// ipxescript
+	n.IPXEScript = i.IPXE.Contents
+
+	// console
+	n.Console = ""
+
+	// facility
+	n.Facility = ""
 
 	return n, nil
 }

@@ -12,6 +12,12 @@ import (
 // Handler is a noop backend.
 type Handler struct{}
 
-func (h Handler) Read(_ context.Context, _ net.HardwareAddr) (*data.DHCP, *data.Netboot, error) {
+// GetByMac returns an error.
+func (h Handler) GetByMac(_ context.Context, _ net.HardwareAddr) (*data.DHCP, *data.Netboot, error) {
+	return nil, nil, errors.New("no backend specified, please specify a backend")
+}
+
+// GetByIP returns an error.
+func (h Handler) GetByIP(_ context.Context, _ net.IP) (*data.DHCP, *data.Netboot, error) {
 	return nil, nil, errors.New("no backend specified, please specify a backend")
 }

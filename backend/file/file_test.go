@@ -233,11 +233,16 @@ func TestTranslate(t *testing.T) {
 		DomainName:       "example.com",
 		BroadcastAddress: "192.168.2.255",
 		NTPServers:       []string{"132.163.96.2"},
+		VLANID:           "100",
 		LeaseTime:        86400,
+		Arch:             "x86_64",
 		DomainSearch:     []string{"example.com"},
 		Netboot: netboot{
 			AllowPXE:      true,
 			IPXEScriptURL: "http://boot.netboot.xyz",
+			IPXEScript:    "#!ipxe\nchain http://boot.netboot.xyz",
+			Console:       "ttyS0",
+			Facility:      "onprem",
 		},
 	}
 	wantDHCP := &data.DHCP{
@@ -250,12 +255,17 @@ func TestTranslate(t *testing.T) {
 		DomainName:       "example.com",
 		BroadcastAddress: netip.MustParseAddr("192.168.2.255"),
 		NTPServers:       []net.IP{{132, 163, 96, 2}},
+		VLANID:           "100",
 		LeaseTime:        86400,
+		Arch:             "x86_64",
 		DomainSearch:     []string{"example.com"},
 	}
 	wantNetboot := &data.Netboot{
 		AllowNetboot:  true,
 		IPXEScriptURL: &url.URL{Scheme: "http", Host: "boot.netboot.xyz"},
+		IPXEScript:    "#!ipxe\nchain http://boot.netboot.xyz",
+		Console:       "ttyS0",
+		Facility:      "onprem",
 	}
 	w := &Watcher{Log: logr.Discard()}
 	gotDHCP, gotNetboot, err := w.translate(input)
@@ -293,7 +303,7 @@ func TestTranslateErrors(t *testing.T) {
 	}
 }
 
-func TestRead(t *testing.T) {
+func TestGetByMac(t *testing.T) {
 	tests := map[string]struct {
 		mac     net.HardwareAddr
 		badData bool
@@ -320,7 +330,41 @@ func TestRead(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			_, _, err = w.Read(context.Background(), tt.mac)
+			_, _, err = w.GetByMac(context.Background(), tt.mac)
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+func TestGetByIP(t *testing.T) {
+	tests := map[string]struct {
+		ip      net.IP
+		badData bool
+		wantErr error
+	}{
+		"no record found":   {ip: net.IPv4(172, 168, 2, 1), wantErr: errRecordNotFound},
+		"record found":      {ip: net.IPv4(192, 168, 2, 153), wantErr: nil},
+		"fail parsing file": {badData: true, wantErr: errFileFormat},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			data := "testdata/example.yaml"
+			if tt.badData {
+				var err error
+				data, err = createFile([]byte("not a yaml file"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer os.Remove(data)
+			}
+			w, err := NewWatcher(logr.Discard(), data)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, _, err = w.GetByIP(context.Background(), tt.ip)
 			if !errors.Is(err, tt.wantErr) {
 				t.Fatal(err)
 			}

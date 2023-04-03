@@ -14,6 +14,7 @@ import (
 	"github.com/go-logr/stdr"
 	"github.com/tinkerbell/dhcp"
 	"github.com/tinkerbell/dhcp/backend/kube"
+	"github.com/tinkerbell/dhcp/handler"
 	"github.com/tinkerbell/dhcp/handler/reservation"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/clientcmd/api"
@@ -35,7 +36,7 @@ func main() {
 		panic(err)
 	}
 
-	handler := &reservation.Handler{
+	h := &reservation.Handler{
 		Log:    l,
 		IPAddr: netip.MustParseAddr("192.168.2.221"),
 		Netboot: reservation.Netboot{
@@ -48,12 +49,12 @@ func main() {
 		Backend:     backend,
 	}
 	listener := &dhcp.Listener{}
-	l.Info("starting server", "addr", handler.IPAddr)
-	l.Error(listener.ListenAndServe(ctx, handler), "done")
+	l.Info("starting server", "addr", h.IPAddr)
+	l.Error(listener.ListenAndServe(ctx, h), "done")
 	l.Info("done")
 }
 
-func kubeBackend(ctx context.Context) (reservation.BackendReader, error) {
+func kubeBackend(ctx context.Context) (handler.BackendReader, error) {
 	ccfg := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
 		&clientcmd.ClientConfigLoadingRules{
 			ExplicitPath: "/home/tink/.kube/config",
