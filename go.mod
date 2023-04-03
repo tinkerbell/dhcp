@@ -1,6 +1,6 @@
 module github.com/tinkerbell/dhcp
 
-go 1.18
+go 1.20
 
 require (
 	github.com/equinix-labs/otel-init-go v0.0.5
