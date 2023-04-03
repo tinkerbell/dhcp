@@ -1,3 +1,4 @@
+// package main is an example of how to use the dhcp package with the kube backend.
 package main
 
 import (

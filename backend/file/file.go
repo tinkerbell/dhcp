@@ -107,7 +107,7 @@ func (w *Watcher) Read(ctx context.Context, mac net.HardwareAddr) (*data.DHCP, *
 	w.dataMu.RUnlock()
 	r := make(map[string]dhcp)
 	if err := yaml.Unmarshal(d, &r); err != nil {
-		err := fmt.Errorf("%v: %w", err, errFileFormat)
+		err := fmt.Errorf("%w: %w", err, errFileFormat)
 		w.Log.Error(err, "failed to unmarshal file data")
 		span.SetStatus(codes.Error, err.Error())
 
@@ -180,7 +180,7 @@ func (w *Watcher) translate(r dhcp) (*data.DHCP, *data.Netboot, error) {
 	// ip address, required
 	ip, err := netip.ParseAddr(r.IPAddress)
 	if err != nil {
-		return nil, nil, fmt.Errorf("%v: %w", err, errParseIP)
+		return nil, nil, fmt.Errorf("%w: %w", err, errParseIP)
 	}
 	d.IPAddress = ip
 
@@ -244,7 +244,7 @@ func (w *Watcher) translate(r dhcp) (*data.DHCP, *data.Netboot, error) {
 	if r.Netboot.IPXEScriptURL != "" {
 		u, err := url.Parse(r.Netboot.IPXEScriptURL)
 		if err != nil {
-			return nil, nil, fmt.Errorf("%v: %w", err, errParseURL)
+			return nil, nil, fmt.Errorf("%w: %w", err, errParseURL)
 		}
 		n.IPXEScriptURL = u
 	}
