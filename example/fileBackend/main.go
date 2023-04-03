@@ -47,12 +47,8 @@ func main() {
 		Backend:     backend,
 	}
 	listener := &dhcp.Listener{}
-	go func() {
-		<-ctx.Done()
-		l.Error(listener.Shutdown(), "shutting down server")
-	}()
 	l.Info("starting server", "addr", handler.IPAddr)
-	l.Error(listener.ListenAndServe(handler), "done")
+	l.Error(listener.ListenAndServe(ctx, handler), "done")
 	l.Info("done")
 }
 

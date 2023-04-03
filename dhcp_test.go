@@ -103,19 +103,16 @@ func TestListenAndServe(t *testing.T) {
 			defer done()
 			go func() {
 				<-ctx.Done()
-				s.Shutdown()
 			}()
 
-			go func() {
-				t.Log(s.ListenAndServe(tt.h))
-			}()
+			go s.ListenAndServe(ctx, tt.h)
 
 			// make client calls
-			offer, err := dhcp(ctx)
+			d, err := dhcp(ctx)
 			if err != nil {
 				t.Fatal(err)
 			}
-			t.Log(offer)
+			t.Log(d)
 
 			done()
 		})
@@ -140,19 +137,11 @@ func TestListenerAndServe(t *testing.T) {
 			}
 			ctx, done := context.WithTimeout(context.Background(), time.Millisecond*100)
 			defer done()
-			go func() {
-				<-ctx.Done()
-				s.Shutdown()
-			}()
 
-			err := s.ListenAndServe(tt.h)
-			switch err.(type) {
-			case *net.OpError:
-			default:
-				if err.Error() != "failed to create udp connection: cannot bind to port 67: permission denied" && !errors.Is(err, ErrNoConn) {
-					t.Log(err)
-					t.Fatalf("got: %T, wanted: %T or ErrNoConn", err, &net.OpError{})
-				}
+			err := s.ListenAndServe(ctx, tt.h)
+			if err != tt.err && err.Error() != "failed to create udp connection: cannot bind to port 67: permission denied" && !errors.Is(err, ErrNoConn) { //nolint:errorlint // nil pointer dereference without this.
+				t.Log(err)
+				t.Fatalf("got: %T, wanted: %T or ErrNoConn", err, &net.OpError{})
 			}
 		})
 	}
@@ -169,17 +158,13 @@ func TestServe(t *testing.T) {
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			s := &Listener{
-				Addr: tt.addr,
-			}
 			ctx, done := context.WithTimeout(context.Background(), time.Millisecond*100)
 			defer done()
 			go func() {
 				<-ctx.Done()
-				s.Shutdown()
 			}()
 
-			err := Serve(nil, tt.h)
+			err := Serve(ctx, nil, tt.h)
 			switch err.(type) {
 			case *net.OpError:
 			default:
