@@ -3,6 +3,7 @@ package reservation
 import (
 	"context"
 	"net"
+	"net/netip"
 	"net/url"
 	"testing"
 	"time"
@@ -18,7 +19,6 @@ import (
 	oteldhcp "github.com/tinkerbell/dhcp/otel"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
-	"inet.af/netaddr"
 )
 
 func TestSetDHCPOpts(t *testing.T) {
@@ -39,16 +39,16 @@ func TestSetDHCPOpts(t *testing.T) {
 				m:   &dhcpv4.DHCPv4{Options: dhcpv4.OptionsFromList(dhcpv4.OptParameterRequestList(dhcpv4.OptionSubnetMask))},
 				d: &data.DHCP{
 					MACAddress:     net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
-					IPAddress:      netaddr.IPv4(192, 168, 4, 4),
+					IPAddress:      netip.MustParseAddr("192.168.4.4"),
 					SubnetMask:     []byte{255, 255, 255, 0},
-					DefaultGateway: netaddr.IPv4(192, 168, 4, 1),
+					DefaultGateway: netip.MustParseAddr("192.168.4.1"),
 					NameServers: []net.IP{
 						{8, 8, 8, 8},
 						{8, 8, 4, 4},
 					},
 					Hostname:         "test-server",
 					DomainName:       "mynet.local",
-					BroadcastAddress: netaddr.IPv4(192, 168, 4, 255),
+					BroadcastAddress: netip.MustParseAddr("192.168.4.255"),
 					NTPServers: []net.IP{
 						{132, 163, 96, 2},
 						{132, 163, 96, 3},
@@ -149,7 +149,7 @@ func TestBootfileAndNextServer(t *testing.T) {
 		uClass  UserClass
 		opt60   string
 		bin     string
-		tftp    netaddr.IPPort
+		tftp    netip.AddrPort
 		ipxe    *url.URL
 		iscript *url.URL
 	}
@@ -186,7 +186,7 @@ func TestBootfileAndNextServer(t *testing.T) {
 				mac:    net.HardwareAddr{0x01, 0x02, 0x03, 0x04, 0x05, 0x07},
 				uClass: IPXE,
 				bin:    "unidonly.kpxe",
-				tftp:   netaddr.IPPortFrom(netaddr.IPv4(192, 168, 6, 5), 69),
+				tftp:   netip.MustParseAddrPort("192.168.6.5:69"),
 				ipxe:   &url.URL{Scheme: "tftp", Host: "192.168.6.5:69"},
 			},
 			wantBootFile: "tftp://192.168.6.5:69/unidonly.kpxe",
@@ -199,7 +199,7 @@ func TestBootfileAndNextServer(t *testing.T) {
 				mac:    net.HardwareAddr{0x01, 0x02, 0x03, 0x04, 0x05, 0x07},
 				uClass: IPXE,
 				bin:    "unidonly.kpxe",
-				tftp:   netaddr.IPPortFrom(netaddr.IPv4(192, 168, 6, 5), 69),
+				tftp:   netip.MustParseAddrPort("192.168.6.5:69"),
 				ipxe:   &url.URL{Scheme: "tftp", Host: "192.168.6.5:69"},
 			},
 			wantBootFile: "tftp://192.168.6.5:69/unidonly.kpxe-00-23b1e307bb35484f535a1f772c06910e-d887dc3912240434-01",
@@ -210,7 +210,7 @@ func TestBootfileAndNextServer(t *testing.T) {
 			args: args{
 				mac:  net.HardwareAddr{0x01, 0x02, 0x03, 0x04, 0x05, 0x07},
 				bin:  "unidonly.kpxe",
-				tftp: netaddr.IPPortFrom(netaddr.IPv4(192, 168, 6, 5), 69),
+				tftp: netip.MustParseAddrPort("192.168.6.5:69"),
 				ipxe: &url.URL{Scheme: "tftp", Host: "192.168.6.5:69"},
 			},
 			wantBootFile: "unidonly.kpxe",
@@ -221,7 +221,7 @@ func TestBootfileAndNextServer(t *testing.T) {
 			args: args{
 				mac:  net.HardwareAddr{0x01, 0x02, 0x03, 0x04, 0x05, 0x07},
 				bin:  "unidonly.kpxe",
-				tftp: netaddr.IPPortFrom(netaddr.IPv4(192, 168, 6, 5), 69),
+				tftp: netip.MustParseAddrPort("192.168.6.5:69"),
 				ipxe: &url.URL{Scheme: "tftp", Host: "192.168.6.5:69"},
 			},
 			wantBootFile: "unidonly.kpxe",

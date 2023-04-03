@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net"
+	"net/netip"
 	"net/url"
 	"os"
 	"testing"
@@ -20,7 +21,6 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/tinkerbell/dhcp/data"
-	"inet.af/netaddr"
 )
 
 func TestNewWatcher(t *testing.T) {
@@ -45,7 +45,7 @@ func TestNewWatcher(t *testing.T) {
 				defer os.Remove(name)
 			}
 			w, err := NewWatcher(logr.Discard(), name)
-			if !errors.Is(err, tt.wantErr) && !errors.As(err, &tt.wantErr) {
+			if (err != nil) != (tt.wantErr != nil) {
 				t.Fatalf("NewWatcher() error = %v; type = %[1]T, wantErr %v; type = %[2]T", err, tt.wantErr)
 			}
 			var got string
@@ -242,13 +242,13 @@ func TestTranslate(t *testing.T) {
 	}
 	wantDHCP := &data.DHCP{
 		MACAddress:       []byte{0x00, 0x01, 0x02, 0x03, 0x04, 0x05},
-		IPAddress:        netaddr.IPv4(192, 168, 2, 150),
+		IPAddress:        netip.MustParseAddr("192.168.2.150"),
 		SubnetMask:       net.IPv4Mask(255, 255, 255, 0),
-		DefaultGateway:   netaddr.IPv4(192, 168, 2, 1),
+		DefaultGateway:   netip.MustParseAddr("192.168.2.1"),
 		NameServers:      []net.IP{{1, 1, 1, 1}, {8, 8, 8, 8}},
 		Hostname:         "test-server",
 		DomainName:       "example.com",
-		BroadcastAddress: netaddr.IPv4(192, 168, 2, 255),
+		BroadcastAddress: netip.MustParseAddr("192.168.2.255"),
 		NTPServers:       []net.IP{{132, 163, 96, 2}},
 		LeaseTime:        86400,
 		DomainSearch:     []string{"example.com"},
@@ -262,7 +262,7 @@ func TestTranslate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if diff := cmp.Diff(gotDHCP, wantDHCP, cmpopts.IgnoreUnexported(netaddr.IP{})); diff != "" {
+	if diff := cmp.Diff(gotDHCP, wantDHCP, cmpopts.IgnoreUnexported(netip.Addr{})); diff != "" {
 		t.Error(diff)
 	}
 	if diff := cmp.Diff(gotNetboot, wantNetboot); diff != "" {

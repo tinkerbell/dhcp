@@ -2,12 +2,12 @@ package data
 
 import (
 	"net"
+	"net/netip"
 	"net/url"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
 	"go.opentelemetry.io/otel/attribute"
-	"inet.af/netaddr"
 )
 
 func TestDHCPEncodeToAttributes(t *testing.T) {
@@ -34,13 +34,13 @@ func TestDHCPEncodeToAttributes(t *testing.T) {
 		"successful encode of populated DHCP struct": {
 			dhcp: &DHCP{
 				MACAddress:       []byte{0x00, 0x01, 0x02, 0x03, 0x04, 0x05},
-				IPAddress:        netaddr.IPv4(192, 168, 2, 150),
+				IPAddress:        netip.MustParseAddr("192.168.2.150"),
 				SubnetMask:       []byte{255, 255, 255, 0},
-				DefaultGateway:   netaddr.IPv4(192, 168, 2, 1),
+				DefaultGateway:   netip.MustParseAddr("192.168.2.1"),
 				NameServers:      []net.IP{{1, 1, 1, 1}, {8, 8, 8, 8}},
 				Hostname:         "test",
 				DomainName:       "example.com",
-				BroadcastAddress: netaddr.IPv4(192, 168, 2, 255),
+				BroadcastAddress: netip.MustParseAddr("192.168.2.255"),
 				NTPServers:       []net.IP{{132, 163, 96, 2}},
 				LeaseTime:        86400,
 				DomainSearch:     []string{"example.com", "example.org"},

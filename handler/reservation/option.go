@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/netip"
 	"net/url"
 	"strings"
 
@@ -12,7 +13,6 @@ import (
 	"github.com/insomniacslk/dhcp/iana"
 	"github.com/tinkerbell/dhcp/data"
 	"github.com/tinkerbell/dhcp/otel"
-	"inet.af/netaddr"
 )
 
 // UserClass is DHCP option 77 (https://www.rfc-editor.org/rfc/rfc3004.html).
@@ -78,7 +78,7 @@ func (u UserClass) String() string {
 func (h *Handler) setDHCPOpts(_ context.Context, _ *dhcpv4.DHCPv4, d *data.DHCP) []dhcpv4.Modifier {
 	mods := []dhcpv4.Modifier{
 		dhcpv4.WithLeaseTime(d.LeaseTime),
-		dhcpv4.WithYourIP(d.IPAddress.IPAddr().IP),
+		dhcpv4.WithYourIP(d.IPAddress.AsSlice()),
 	}
 	if len(d.NameServers) > 0 {
 		mods = append(mods, dhcpv4.WithDNS(d.NameServers...))
@@ -89,8 +89,8 @@ func (h *Handler) setDHCPOpts(_ context.Context, _ *dhcpv4.DHCPv4, d *data.DHCP)
 	if len(d.NTPServers) > 0 {
 		mods = append(mods, dhcpv4.WithOption(dhcpv4.OptNTPServers(d.NTPServers...)))
 	}
-	if !d.BroadcastAddress.IsZero() {
-		mods = append(mods, dhcpv4.WithGeneric(dhcpv4.OptionBroadcastAddress, d.BroadcastAddress.IPAddr().IP))
+	if d.BroadcastAddress.Compare(netip.Addr{}) != 0 {
+		mods = append(mods, dhcpv4.WithGeneric(dhcpv4.OptionBroadcastAddress, d.BroadcastAddress.AsSlice()))
 	}
 	if d.DomainName != "" {
 		mods = append(mods, dhcpv4.WithGeneric(dhcpv4.OptionDomainName, []byte(d.DomainName)))
@@ -101,8 +101,8 @@ func (h *Handler) setDHCPOpts(_ context.Context, _ *dhcpv4.DHCPv4, d *data.DHCP)
 	if len(d.SubnetMask) > 0 {
 		mods = append(mods, dhcpv4.WithNetmask(d.SubnetMask))
 	}
-	if !d.DefaultGateway.IsZero() {
-		mods = append(mods, dhcpv4.WithRouter(d.DefaultGateway.IPAddr().IP))
+	if d.DefaultGateway.Compare(netip.Addr{}) != 0 {
+		mods = append(mods, dhcpv4.WithRouter(d.DefaultGateway.AsSlice()))
 	}
 
 	return mods
@@ -161,7 +161,7 @@ func (h *Handler) setNetworkBootOpts(ctx context.Context, m *dhcpv4.DHCPv4, n *d
 // bootfileAndNextServer returns the bootfile (string) and next server (net.IP).
 // input arguments `tftp`, `ipxe` and `iscript` use non string types so as to attempt to be more clear about the expectation around what is wanted for these values.
 // It also helps us avoid having to validate a string in multiple ways.
-func (h *Handler) bootfileAndNextServer(ctx context.Context, uClass UserClass, opt60, bin string, tftp netaddr.IPPort, ipxe, iscript *url.URL) (string, net.IP) {
+func (h *Handler) bootfileAndNextServer(ctx context.Context, uClass UserClass, opt60, bin string, tftp netip.AddrPort, ipxe, iscript *url.URL) (string, net.IP) {
 	var nextServer net.IP
 	var bootfile string
 	if tp := otelhelpers.TraceparentStringFromContext(ctx); h.OTELEnabled && tp != "" {
@@ -184,10 +184,10 @@ func (h *Handler) bootfileAndNextServer(ctx context.Context, uClass UserClass, o
 		nextServer = ns
 	case uClass == IPXE: // if the "iPXE" user class is found it means we aren't in our custom version of ipxe, but because of the option 43 we're setting we need to give a full tftp url from which to boot.
 		bootfile = fmt.Sprintf("tftp://%v/%v", tftp.String(), bin)
-		nextServer = tftp.UDPAddr().IP
+		nextServer = net.IP(tftp.Addr().AsSlice())
 	default:
 		bootfile = bin
-		nextServer = tftp.UDPAddr().IP
+		nextServer = net.IP(tftp.Addr().AsSlice())
 	}
 
 	return bootfile, nextServer

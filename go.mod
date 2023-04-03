@@ -1,6 +1,6 @@
 module github.com/tinkerbell/dhcp
 
-go 1.17
+go 1.18
 
 require (
 	github.com/equinix-labs/otel-init-go v0.0.5
@@ -16,7 +16,6 @@ require (
 	go.opentelemetry.io/otel v1.4.0
 	go.opentelemetry.io/otel/trace v1.4.0
 	golang.org/x/net v0.7.0
-	inet.af/netaddr v0.0.0-20211027220019-c74959edd3b6
 	k8s.io/apimachinery v0.23.0
 	k8s.io/client-go v0.23.0
 	sigs.k8s.io/controller-runtime v0.11.1
@@ -59,8 +58,6 @@ require (
 	go.uber.org/atomic v1.9.0 // indirect
 	go.uber.org/multierr v1.7.0 // indirect
 	go.uber.org/zap v1.20.0 // indirect
-	go4.org/intern v0.0.0-20211027215823-ae77deb06f29 // indirect
-	go4.org/unsafe/assume-no-moving-gc v0.0.0-20211027215541-db492cf91b37 // indirect
 	golang.org/x/oauth2 v0.0.0-20211028175245-ba495a64dcb5 // indirect
 	golang.org/x/sys v0.5.0 // indirect
 	golang.org/x/term v0.5.0 // indirect

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"net/netip"
 	"testing"
 	"time"
 
@@ -13,7 +14,6 @@ import (
 	"github.com/insomniacslk/dhcp/dhcpv4/nclient4"
 	"github.com/tinkerbell/dhcp/handler/noop"
 	"golang.org/x/net/nettest"
-	"inet.af/netaddr"
 )
 
 type mock struct {
@@ -90,10 +90,10 @@ func TestListenAndServe(t *testing.T) {
 	// test if the server is listening on the correct address and port
 	tests := map[string]struct {
 		h            Handler
-		addr         netaddr.IPPort
+		addr         netip.AddrPort
 		wantListener *Listener
 	}{
-		"success": {addr: netaddr.IPPortFrom(netaddr.IPv4(127, 0, 0, 1), 7676), h: &mock{}},
+		"success": {addr: netip.MustParseAddrPort("127.0.0.1:7676"), h: &mock{}},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -106,14 +106,16 @@ func TestListenAndServe(t *testing.T) {
 				s.Shutdown()
 			}()
 
-			go s.ListenAndServe(tt.h)
+			go func() {
+				t.Log(s.ListenAndServe(tt.h))
+			}()
 
 			// make client calls
-			d, err := dhcp(ctx)
+			offer, err := dhcp(ctx)
 			if err != nil {
 				t.Fatal(err)
 			}
-			t.Log(d)
+			t.Log(offer)
 
 			done()
 		})
@@ -123,12 +125,12 @@ func TestListenAndServe(t *testing.T) {
 func TestListenerAndServe(t *testing.T) {
 	tests := map[string]struct {
 		h    Handler
-		addr netaddr.IPPort
+		addr netip.AddrPort
 		err  error
 	}{
-		"noop handler":             {h: &noop.Handler{}, addr: netaddr.IPPortFrom(netaddr.IPv4(0, 0, 0, 0), 7678)},
-		"no handler":               {addr: netaddr.IPPortFrom(netaddr.IPv4(0, 0, 0, 0), 7678)},
-		"mock handler":             {h: &mock{}, addr: netaddr.IPPortFrom(netaddr.IPv4(0, 0, 0, 0), 7678)},
+		"noop handler":             {h: &noop.Handler{}, addr: netip.MustParseAddrPort("0.0.0.0:7678")},
+		"no handler":               {addr: netip.MustParseAddrPort("0.0.0.0:7678")},
+		"mock handler":             {h: &mock{}, addr: netip.MustParseAddrPort("0.0.0.0:7678")},
 		"success use default addr": {h: &mock{}},
 	}
 	for name, tt := range tests {
@@ -159,11 +161,11 @@ func TestListenerAndServe(t *testing.T) {
 func TestServe(t *testing.T) {
 	tests := map[string]struct {
 		h    Handler
-		addr netaddr.IPPort
+		addr netip.AddrPort
 		err  error
 	}{
-		"noop handler": {addr: netaddr.IPPortFrom(netaddr.IPv4(0, 0, 0, 0), 7676), h: &noop.Handler{}},
-		"no handler":   {addr: netaddr.IPPortFrom(netaddr.IPv4(0, 0, 0, 0), 7678)},
+		"noop handler": {addr: netip.MustParseAddrPort("0.0.0.0:7676"), h: &noop.Handler{}},
+		"no handler":   {addr: netip.MustParseAddrPort("0.0.0.0:7678")},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"net/url"
 
 	"github.com/tinkerbell/dhcp/data"
@@ -13,7 +14,6 @@ import (
 	"github.com/tinkerbell/tink/pkg/controllers"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/codes"
-	"inet.af/netaddr"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -138,7 +138,7 @@ func toDHCPData(h *v1alpha1.DHCP) (*data.DHCP, error) {
 
 	if h.IP != nil {
 		// IPAddress is required
-		if d.IPAddress, err = netaddr.ParseIP(h.IP.Address); err != nil {
+		if d.IPAddress, err = netip.ParseAddr(h.IP.Address); err != nil {
 			return nil, err
 		}
 		// Netmask is required
@@ -152,7 +152,7 @@ func toDHCPData(h *v1alpha1.DHCP) (*data.DHCP, error) {
 	}
 
 	// Gateway is optional, but should be a valid IP address if present
-	if d.DefaultGateway, err = netaddr.ParseIP(h.IP.Gateway); err != nil {
+	if d.DefaultGateway, err = netip.ParseAddr(h.IP.Gateway); err != nil {
 		return nil, err
 	}
 
