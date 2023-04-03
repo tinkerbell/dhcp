@@ -191,6 +191,7 @@ func TestGetByIP(t *testing.T) {
 			},
 			Hostname:  "sm01",
 			LeaseTime: 86400,
+			Arch:      "x86_64",
 		}, wantNetboot: &data.Netboot{
 			AllowNetboot: true,
 			IPXEScriptURL: &url.URL{
@@ -280,6 +281,7 @@ func TestGetByMac(t *testing.T) {
 			},
 			Hostname:  "sm01",
 			LeaseTime: 86400,
+			Arch:      "x86_64",
 		}, wantNetboot: &data.Netboot{
 			AllowNetboot: true,
 			IPXEScriptURL: &url.URL{
