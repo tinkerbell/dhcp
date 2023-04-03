@@ -261,7 +261,9 @@ func toNetbootData(i *v1alpha1.Netboot) (*data.Netboot, error) {
 	}
 
 	// ipxescript
-	n.IPXEScript = i.IPXE.Contents
+	if i.IPXE != nil {
+		n.IPXEScript = i.IPXE.Contents
+	}
 
 	// console
 	n.Console = ""
