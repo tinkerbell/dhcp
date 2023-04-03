@@ -3,6 +3,7 @@ package kube
 import (
 	"context"
 	"net"
+	"net/netip"
 	"net/url"
 	"testing"
 
@@ -10,7 +11,6 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/tinkerbell/dhcp/data"
 	"github.com/tinkerbell/tink/pkg/apis/core/v1alpha1"
-	"inet.af/netaddr"
 	"k8s.io/apimachinery/pkg/api/meta"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -103,9 +103,9 @@ func TestToDHCPData(t *testing.T) {
 			},
 			want: &data.DHCP{
 				SubnetMask:     net.IPv4Mask(255, 255, 0, 0),
-				DefaultGateway: netaddr.IPv4(192, 168, 2, 1),
+				DefaultGateway: netip.MustParseAddr("192.168.2.1"),
 				NameServers:    []net.IP{net.IPv4(1, 1, 1, 1)},
-				IPAddress:      netaddr.IPv4(192, 168, 2, 4),
+				IPAddress:      netip.MustParseAddr("192.168.2.4"),
 				MACAddress:     net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x04},
 			},
 		},
@@ -123,11 +123,11 @@ func TestToDHCPData(t *testing.T) {
 			},
 			want: &data.DHCP{
 				SubnetMask:     net.IPv4Mask(255, 255, 255, 0),
-				DefaultGateway: netaddr.IPv4(192, 168, 1, 1),
+				DefaultGateway: netip.MustParseAddr("192.168.1.1"),
 				NameServers:    []net.IP{net.IPv4(1, 1, 1, 1)},
 				Hostname:       "test",
 				LeaseTime:      3600,
-				IPAddress:      netaddr.IPv4(192, 168, 1, 4),
+				IPAddress:      netip.MustParseAddr("192.168.1.4"),
 				MACAddress:     net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x04},
 			},
 		},
@@ -138,7 +138,7 @@ func TestToDHCPData(t *testing.T) {
 			if tt.shouldErr && err == nil {
 				t.Fatal("expected error")
 			}
-			if diff := cmp.Diff(got, tt.want, cmpopts.IgnoreUnexported(netaddr.IP{})); diff != "" {
+			if diff := cmp.Diff(got, tt.want, cmpopts.IgnoreUnexported(netip.Addr{})); diff != "" {
 				t.Fatal(diff)
 			}
 		})
@@ -161,7 +161,7 @@ func TestToNetbootData(t *testing.T) {
 			if tt.shouldErr && err == nil {
 				t.Fatal("expected error")
 			}
-			if diff := cmp.Diff(got, tt.want, cmpopts.IgnoreUnexported(netaddr.IP{})); diff != "" {
+			if diff := cmp.Diff(got, tt.want, cmpopts.IgnoreUnexported(netip.Addr{})); diff != "" {
 				t.Fatal(diff)
 			}
 		})
@@ -183,9 +183,9 @@ func TestRead(t *testing.T) {
 		"fail to list hardware":  {shouldErr: true, failToList: true},
 		"good data": {hwObject: []v1alpha1.Hardware{hwObject1}, wantDHCP: &data.DHCP{
 			MACAddress:     net.HardwareAddr{0x3c, 0xec, 0xef, 0x4c, 0x4f, 0x54},
-			IPAddress:      netaddr.IPv4(172, 16, 10, 100),
+			IPAddress:      netip.MustParseAddr("172.16.10.100"),
 			SubnetMask:     []byte{0xff, 0xff, 0xff, 0x00},
-			DefaultGateway: netaddr.IPv4(255, 255, 255, 0),
+			DefaultGateway: netip.MustParseAddr("255.255.255.0"),
 			NameServers: []net.IP{
 				{0x1, 0x1, 0x1, 0x1},
 			},
@@ -246,7 +246,7 @@ func TestRead(t *testing.T) {
 				t.Fatal("expected error")
 			}
 
-			if diff := cmp.Diff(gotDHCP, tc.wantDHCP, cmpopts.IgnoreUnexported(netaddr.IP{})); diff != "" {
+			if diff := cmp.Diff(gotDHCP, tc.wantDHCP, cmpopts.IgnoreUnexported(netip.Addr{})); diff != "" {
 				t.Fatal(diff)
 			}
 

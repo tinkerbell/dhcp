@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/netip"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -17,7 +18,6 @@ import (
 	"github.com/tinkerbell/dhcp/data"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/codes"
-	"inet.af/netaddr"
 )
 
 const tracerName = "github.com/tinkerbell/dhcp"
@@ -107,7 +107,7 @@ func (w *Watcher) Read(ctx context.Context, mac net.HardwareAddr) (*data.DHCP, *
 	w.dataMu.RUnlock()
 	r := make(map[string]dhcp)
 	if err := yaml.Unmarshal(d, &r); err != nil {
-		err := fmt.Errorf("%v: %w", err, errFileFormat)
+		err := fmt.Errorf("%w: %w", err, errFileFormat)
 		w.Log.Error(err, "failed to unmarshal file data")
 		span.SetStatus(codes.Error, err.Error())
 
@@ -178,9 +178,9 @@ func (w *Watcher) translate(r dhcp) (*data.DHCP, *data.Netboot, error) {
 
 	d.MACAddress = r.MACAddress
 	// ip address, required
-	ip, err := netaddr.ParseIP(r.IPAddress)
+	ip, err := netip.ParseAddr(r.IPAddress)
 	if err != nil {
-		return nil, nil, fmt.Errorf("%v: %w", err, errParseIP)
+		return nil, nil, fmt.Errorf("%w: %w", err, errParseIP)
 	}
 	d.IPAddress = ip
 
@@ -192,7 +192,7 @@ func (w *Watcher) translate(r dhcp) (*data.DHCP, *data.Netboot, error) {
 	d.SubnetMask = net.IPMask(sm.To4())
 
 	// default gateway, optional
-	if dg, err := netaddr.ParseIP(r.DefaultGateway); err != nil {
+	if dg, err := netip.ParseAddr(r.DefaultGateway); err != nil {
 		w.Log.Info("failed to parse default gateway", "defaultGateway", r.DefaultGateway, "err", err)
 	} else {
 		d.DefaultGateway = dg
@@ -215,7 +215,7 @@ func (w *Watcher) translate(r dhcp) (*data.DHCP, *data.Netboot, error) {
 	d.DomainName = r.DomainName
 
 	// broadcast address, optional
-	if ba, err := netaddr.ParseIP(r.BroadcastAddress); err != nil {
+	if ba, err := netip.ParseAddr(r.BroadcastAddress); err != nil {
 		w.Log.Info("failed to parse broadcast address", "broadcastAddress", r.BroadcastAddress, "err", err)
 	} else {
 		d.BroadcastAddress = ba
@@ -244,7 +244,7 @@ func (w *Watcher) translate(r dhcp) (*data.DHCP, *data.Netboot, error) {
 	if r.Netboot.IPXEScriptURL != "" {
 		u, err := url.Parse(r.Netboot.IPXEScriptURL)
 		if err != nil {
-			return nil, nil, fmt.Errorf("%v: %w", err, errParseURL)
+			return nil, nil, fmt.Errorf("%w: %w", err, errParseURL)
 		}
 		n.IPXEScriptURL = u
 	}

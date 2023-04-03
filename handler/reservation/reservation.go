@@ -2,10 +2,10 @@
 package reservation
 
 import (
+	"net/netip"
 	"net/url"
 
 	"github.com/go-logr/logr"
-	"inet.af/netaddr"
 )
 
 // Handler holds the configuration details for the running the DHCP server.
@@ -16,7 +16,7 @@ type Handler struct {
 	// IPAddr is the IP address to use in DHCP responses.
 	// Option 54 and the sname DHCP header.
 	// This could be a load balancer IP address or an ingress IP address or a local IP address.
-	IPAddr netaddr.IP
+	IPAddr netip.Addr
 
 	// Log is used to log messages.
 	// `logr.Discard()` can be used if no logging is desired.
@@ -35,7 +35,7 @@ type Handler struct {
 // Netboot holds the netboot configuration details used in running a DHCP server.
 type Netboot struct {
 	// iPXE binary server IP:Port serving via TFTP.
-	IPXEBinServerTFTP netaddr.IPPort
+	IPXEBinServerTFTP netip.AddrPort
 
 	// IPXEBinServerHTTP is the URL to the IPXE binary server serving via HTTP(s).
 	IPXEBinServerHTTP *url.URL

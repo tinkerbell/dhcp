@@ -3,24 +3,24 @@ package data
 
 import (
 	"net"
+	"net/netip"
 	"net/url"
 	"strings"
 
 	"go.opentelemetry.io/otel/attribute"
-	"inet.af/netaddr"
 )
 
 // DHCP holds the DHCP headers and options to be set in a DHCP handler response.
 // This is the API between a DHCP handler and a backend.
 type DHCP struct {
 	MACAddress       net.HardwareAddr // chaddr DHCP header.
-	IPAddress        netaddr.IP       // yiaddr DHCP header.
+	IPAddress        netip.Addr       // yiaddr DHCP header.
 	SubnetMask       net.IPMask       // DHCP option 1.
-	DefaultGateway   netaddr.IP       // DHCP option 3.
+	DefaultGateway   netip.Addr       // DHCP option 3.
 	NameServers      []net.IP         // DHCP option 6.
 	Hostname         string           // DHCP option 12.
 	DomainName       string           // DHCP option 15.
-	BroadcastAddress netaddr.IP       // DHCP option 28.
+	BroadcastAddress netip.Addr       // DHCP option 28.
 	NTPServers       []net.IP         // DHCP option 42.
 	LeaseTime        uint32           // DHCP option 51.
 	DomainSearch     []string         // DHCP option 119.
@@ -45,7 +45,7 @@ func (d *DHCP) EncodeToAttributes() []attribute.KeyValue {
 	}
 
 	var ip string
-	if !d.IPAddress.IsZero() {
+	if d.IPAddress.Compare(netip.Addr{}) != 0 {
 		ip = d.IPAddress.String()
 	}
 
@@ -55,12 +55,12 @@ func (d *DHCP) EncodeToAttributes() []attribute.KeyValue {
 	}
 
 	var dfg string
-	if !d.DefaultGateway.IsZero() {
+	if d.DefaultGateway.Compare(netip.Addr{}) != 0 {
 		dfg = d.DefaultGateway.String()
 	}
 
 	var ba string
-	if !d.BroadcastAddress.IsZero() {
+	if d.BroadcastAddress.Compare(netip.Addr{}) != 0 {
 		ba = d.BroadcastAddress.String()
 	}
 

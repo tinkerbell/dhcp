@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"net/netip"
 	"net/url"
 	"os"
 	"testing"
@@ -22,7 +23,6 @@ import (
 	"github.com/tinkerbell/dhcp/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"golang.org/x/net/nettest"
-	"inet.af/netaddr"
 )
 
 var errBadBackend = fmt.Errorf("bad backend")
@@ -39,15 +39,15 @@ func (m *mockBackend) Read(context.Context, net.HardwareAddr) (*data.DHCP, *data
 	}
 	d := &data.DHCP{
 		MACAddress:     []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06},
-		IPAddress:      netaddr.IPv4(192, 168, 1, 100),
+		IPAddress:      netip.MustParseAddr("192.168.1.100"),
 		SubnetMask:     []byte{255, 255, 255, 0},
-		DefaultGateway: netaddr.IPv4(192, 168, 1, 1),
+		DefaultGateway: netip.MustParseAddr("192.168.1.1"),
 		NameServers: []net.IP{
 			{1, 1, 1, 1},
 		},
 		Hostname:         "test-host",
 		DomainName:       "mydomain.com",
-		BroadcastAddress: netaddr.IPv4(192, 168, 1, 255),
+		BroadcastAddress: netip.MustParseAddr("192.168.1.255"),
 		NTPServers: []net.IP{
 			{132, 163, 96, 2},
 		},
@@ -74,7 +74,7 @@ func TestHandle(t *testing.T) {
 		"success discover message type": {
 			server: Handler{
 				Backend: &mockBackend{},
-				IPAddr:  netaddr.IPv4(127, 0, 0, 1),
+				IPAddr:  netip.MustParseAddr("127.0.0.1"),
 			},
 			req: &dhcpv4.DHCPv4{
 				OpCode:       dhcpv4.OpcodeBootRequest,
@@ -108,7 +108,7 @@ func TestHandle(t *testing.T) {
 		"failure discover message type": {
 			server: Handler{
 				Backend: &mockBackend{err: errBadBackend},
-				IPAddr:  netaddr.IPv4(127, 0, 0, 1),
+				IPAddr:  netip.MustParseAddr("127.0.0.1"),
 			},
 			req: &dhcpv4.DHCPv4{
 				OpCode:       dhcpv4.OpcodeBootRequest,
@@ -122,7 +122,7 @@ func TestHandle(t *testing.T) {
 		"success request message type": {
 			server: Handler{
 				Backend: &mockBackend{},
-				IPAddr:  netaddr.IPv4(127, 0, 0, 1),
+				IPAddr:  netip.MustParseAddr("127.0.0.1"),
 			},
 			req: &dhcpv4.DHCPv4{
 				OpCode:        dhcpv4.OpcodeBootRequest,
@@ -170,7 +170,7 @@ func TestHandle(t *testing.T) {
 		"failure request message type": {
 			server: Handler{
 				Backend: &mockBackend{err: errBadBackend},
-				IPAddr:  netaddr.IPv4(127, 0, 0, 1),
+				IPAddr:  netip.MustParseAddr("127.0.0.1"),
 			},
 			req: &dhcpv4.DHCPv4{
 				OpCode:       dhcpv4.OpcodeBootRequest,
@@ -184,7 +184,7 @@ func TestHandle(t *testing.T) {
 		"request release type": {
 			server: Handler{
 				Backend: &mockBackend{err: errBadBackend},
-				IPAddr:  netaddr.IPv4(127, 0, 0, 1),
+				IPAddr:  netip.MustParseAddr("127.0.0.1"),
 			},
 			req: &dhcpv4.DHCPv4{
 				OpCode:       dhcpv4.OpcodeBootRequest,
@@ -198,7 +198,7 @@ func TestHandle(t *testing.T) {
 		"unknown message type": {
 			server: Handler{
 				Backend: &mockBackend{err: errBadBackend},
-				IPAddr:  netaddr.IPv4(127, 0, 0, 1),
+				IPAddr:  netip.MustParseAddr("127.0.0.1"),
 			},
 			req: &dhcpv4.DHCPv4{
 				OpCode:       dhcpv4.OpcodeBootRequest,
@@ -300,7 +300,7 @@ func TestUpdateMsg(t *testing.T) {
 						dhcpv4.OptMessageType(dhcpv4.MessageTypeDiscover),
 					),
 				},
-				data:    &data.DHCP{IPAddress: netaddr.IPv4(192, 168, 1, 100), SubnetMask: net.IPMask(net.IP{255, 255, 255, 0}.To4())},
+				data:    &data.DHCP{IPAddress: netip.MustParseAddr("192.168.1.100"), SubnetMask: net.IPMask(net.IP{255, 255, 255, 0}.To4())},
 				netboot: &data.Netboot{AllowNetboot: true, IPXEScriptURL: &url.URL{Scheme: "http", Host: "localhost:8181", Path: "auto.ipxe"}},
 				msg:     dhcpv4.MessageTypeDiscover,
 			},
@@ -328,7 +328,7 @@ func TestUpdateMsg(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			s := &Handler{
 				Log:    stdr.New(log.New(os.Stdout, "", log.Lshortfile)),
-				IPAddr: netaddr.IPv4(127, 0, 0, 1),
+				IPAddr: netip.MustParseAddr("127.0.0.1"),
 				Netboot: Netboot{
 					Enabled: true,
 				},
@@ -336,7 +336,7 @@ func TestUpdateMsg(t *testing.T) {
 					allowNetboot: true,
 					ipxeScript:   &url.URL{Scheme: "http", Host: "localhost:8181", Path: "auto.ipxe"},
 				},
-				// Listener: netaddr.IPPortFrom(netaddr.IPv4(127, 0, 0, 1), 67),
+				// Listener: netip.AddrPortFrom(netip.MustParseAddr("127.0.0.1"), 67),
 			}
 			got := s.updateMsg(context.Background(), tt.args.m, tt.args.data, tt.args.netboot, tt.args.msg)
 			if diff := cmp.Diff(got, tt.want, cmpopts.IgnoreUnexported(dhcpv4.DHCPv4{})); diff != "" {
@@ -375,13 +375,13 @@ func TestReadBackend(t *testing.T) {
 			},
 			wantDHCP: &data.DHCP{
 				MACAddress:       []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06},
-				IPAddress:        netaddr.IPv4(192, 168, 1, 100),
+				IPAddress:        netip.MustParseAddr("192.168.1.100"),
 				SubnetMask:       []byte{255, 255, 255, 0},
-				DefaultGateway:   netaddr.IPv4(192, 168, 1, 1),
+				DefaultGateway:   netip.MustParseAddr("192.168.1.1"),
 				NameServers:      []net.IP{{1, 1, 1, 1}},
 				Hostname:         "test-host",
 				DomainName:       "mydomain.com",
-				BroadcastAddress: netaddr.IPv4(192, 168, 1, 255),
+				BroadcastAddress: netip.MustParseAddr("192.168.1.255"),
 				NTPServers:       []net.IP{{132, 163, 96, 2}},
 				LeaseTime:        60,
 				DomainSearch:     []string{"mydomain.com"},
@@ -398,7 +398,7 @@ func TestReadBackend(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			s := &Handler{
 				Log:    stdr.New(log.New(os.Stdout, "", log.Lshortfile)),
-				IPAddr: netaddr.IPv4(127, 0, 0, 1),
+				IPAddr: netip.MustParseAddr("127.0.0.1"),
 				Netboot: Netboot{
 					Enabled: true,
 				},
@@ -407,9 +407,9 @@ func TestReadBackend(t *testing.T) {
 					allowNetboot: true,
 					ipxeScript:   &url.URL{Scheme: "http", Host: "localhost:8181", Path: "auto.ipxe"},
 				},
-				// Listener: netaddr.IPPortFrom(netaddr.IPv4(127, 0, 0, 1), 67),
+				// Listener: netip.AddrPortFrom(netip.MustParseAddr("127.0.0.1"), 67),
 			}
-			netaddrComparer := cmp.Comparer(func(x, y netaddr.IP) bool {
+			netaddrComparer := cmp.Comparer(func(x, y netip.Addr) bool {
 				i := x.Compare(y)
 				return i == 0
 			})

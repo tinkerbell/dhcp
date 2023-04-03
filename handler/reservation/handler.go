@@ -137,8 +137,8 @@ func (h *Handler) updateMsg(ctx context.Context, pkt *dhcpv4.DHCPv4, d *data.DHC
 	h.setDefaults()
 	mods := []dhcpv4.Modifier{
 		dhcpv4.WithMessageType(msgType),
-		dhcpv4.WithGeneric(dhcpv4.OptionServerIdentifier, h.IPAddr.IPAddr().IP),
-		dhcpv4.WithServerIP(h.IPAddr.IPAddr().IP),
+		dhcpv4.WithGeneric(dhcpv4.OptionServerIdentifier, h.IPAddr.AsSlice()),
+		dhcpv4.WithServerIP(h.IPAddr.AsSlice()),
 	}
 	mods = append(mods, h.setDHCPOpts(ctx, pkt, d)...)
 
