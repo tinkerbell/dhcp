@@ -6,12 +6,13 @@ import (
 	"net/url"
 
 	"github.com/go-logr/logr"
+	"github.com/tinkerbell/dhcp/handler"
 )
 
 // Handler holds the configuration details for the running the DHCP server.
 type Handler struct {
 	// Backend is the backend to use for getting DHCP data.
-	Backend BackendReader
+	Backend handler.BackendReader
 
 	// IPAddr is the IP address to use in DHCP responses.
 	// Option 54 and the sname DHCP header.

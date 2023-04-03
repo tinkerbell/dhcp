@@ -20,15 +20,6 @@ import (
 
 const tracerName = "github.com/tinkerbell/dhcp/server"
 
-// BackendReader is the interface that wraps the Read method.
-//
-// Backends implement this interface to provide DHCP data to the DHCP server.
-type BackendReader interface {
-	// Read data (from a backend) based on a mac address
-	// and return DHCP headers and options, including netboot info.
-	Read(context.Context, net.HardwareAddr) (*data.DHCP, *data.Netboot, error)
-}
-
 // setDefaults will update the Handler struct to have default values so as
 // to avoid panic for nil pointers and such.
 func (h *Handler) setDefaults() {
@@ -117,7 +108,7 @@ func (h *Handler) readBackend(ctx context.Context, mac net.HardwareAddr) (*data.
 	ctx, span := tracer.Start(ctx, "Hardware data get")
 	defer span.End()
 
-	d, n, err := h.Backend.Read(ctx, mac)
+	d, n, err := h.Backend.GetByMac(ctx, mac)
 	if err != nil {
 		h.Log.Info("error getting DHCP data from backend", "mac", mac, "error", err)
 		span.SetStatus(codes.Error, err.Error())

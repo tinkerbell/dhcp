@@ -33,7 +33,7 @@ type mockBackend struct {
 	ipxeScript   *url.URL
 }
 
-func (m *mockBackend) Read(context.Context, net.HardwareAddr) (*data.DHCP, *data.Netboot, error) {
+func (m *mockBackend) GetByMac(context.Context, net.HardwareAddr) (*data.DHCP, *data.Netboot, error) {
 	if m.err != nil {
 		return nil, nil, m.err
 	}
@@ -61,6 +61,10 @@ func (m *mockBackend) Read(context.Context, net.HardwareAddr) (*data.DHCP, *data
 		IPXEScriptURL: m.ipxeScript,
 	}
 	return d, n, m.err
+}
+
+func (m *mockBackend) GetByIP(context.Context, net.IP) (*data.DHCP, *data.Netboot, error) {
+	return nil, nil, errors.New("not implemented")
 }
 
 func TestHandle(t *testing.T) {

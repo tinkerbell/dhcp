@@ -36,6 +36,9 @@ var (
 type netboot struct {
 	AllowPXE      bool   `yaml:"allowPxe"`      // If true, the client will be provided netboot options in the DHCP offer/ack.
 	IPXEScriptURL string `yaml:"ipxeScriptUrl"` // Overrides default value of that is passed into DHCP on startup.
+	IPXEScript    string `yaml:"ipxeScript"`    // Overrides a default value that is passed into DHCP on startup.
+	Console       string `yaml:"console"`
+	Facility      string `yaml:"facility"`
 }
 
 // dhcp is the structure for the data expected in a file.
@@ -49,7 +52,9 @@ type dhcp struct {
 	DomainName       string           `yaml:"domainName"`       // DHCP option 15.
 	BroadcastAddress string           `yaml:"broadcastAddress"` // DHCP option 28.
 	NTPServers       []string         `yaml:"ntpServers"`       // DHCP option 42.
+	VLANID           string           `yaml:"vlanID"`           // DHCP option 43.116.
 	LeaseTime        int              `yaml:"leaseTime"`        // DHCP option 51.
+	Arch             string           `yaml:"arch"`             // DHCP option 93.
 	DomainSearch     []string         `yaml:"domainSearch"`     // DHCP option 119.
 	Netboot          netboot          `yaml:"netboot"`
 }
@@ -94,11 +99,11 @@ func NewWatcher(l logr.Logger, f string) (*Watcher, error) {
 	return w, nil
 }
 
-// Read is the implementation of the Backend interface.
+// GetByMac is the implementation of the Backend interface.
 // It reads a given file from the in memory data (w.data).
-func (w *Watcher) Read(ctx context.Context, mac net.HardwareAddr) (*data.DHCP, *data.Netboot, error) {
+func (w *Watcher) GetByMac(ctx context.Context, mac net.HardwareAddr) (*data.DHCP, *data.Netboot, error) {
 	tracer := otel.Tracer(tracerName)
-	_, span := tracer.Start(ctx, "backend.file.Read")
+	_, span := tracer.Start(ctx, "backend.file.GetByMac")
 	defer span.End()
 
 	// get data from file, translate it, then pass it into setDHCPOpts and setNetworkBootOpts
@@ -132,6 +137,58 @@ func (w *Watcher) Read(ctx context.Context, mac net.HardwareAddr) (*data.DHCP, *
 	}
 
 	err := fmt.Errorf("%w: %s", errRecordNotFound, mac.String())
+	span.SetStatus(codes.Error, err.Error())
+
+	return nil, nil, err
+}
+
+// GetByIP is the implementation of the Backend interface.
+// It reads a given file from the in memory data (w.data).
+func (w *Watcher) GetByIP(ctx context.Context, ip net.IP) (*data.DHCP, *data.Netboot, error) {
+	tracer := otel.Tracer(tracerName)
+	_, span := tracer.Start(ctx, "backend.file.GetByIP")
+	defer span.End()
+
+	// get data from file, translate it, then pass it into setDHCPOpts and setNetworkBootOpts
+	w.dataMu.RLock()
+	d := w.data
+	w.dataMu.RUnlock()
+	r := make(map[string]dhcp)
+	if err := yaml.Unmarshal(d, &r); err != nil {
+		err := fmt.Errorf("%w: %w", err, errFileFormat)
+		w.Log.Error(err, "failed to unmarshal file data")
+		span.SetStatus(codes.Error, err.Error())
+
+		return nil, nil, err
+	}
+	for k, v := range r {
+		if v.IPAddress == ip.String() {
+			// found a record for this ip address
+			v.IPAddress = ip.String()
+			mac, err := net.ParseMAC(k)
+			if err != nil {
+				err := fmt.Errorf("%w: %w", err, errFileFormat)
+				w.Log.Error(err, "failed to parse mac address")
+				span.SetStatus(codes.Error, err.Error())
+
+				return nil, nil, err
+			}
+			v.MACAddress = mac
+			d, n, err := w.translate(v)
+			if err != nil {
+				span.SetStatus(codes.Error, err.Error())
+
+				return nil, nil, err
+			}
+			span.SetAttributes(d.EncodeToAttributes()...)
+			span.SetAttributes(n.EncodeToAttributes()...)
+			span.SetStatus(codes.Ok, "")
+
+			return d, n, nil
+		}
+	}
+
+	err := fmt.Errorf("%w: %s", errRecordNotFound, ip.String())
 	span.SetStatus(codes.Error, err.Error())
 
 	return nil, nil, err
@@ -231,8 +288,14 @@ func (w *Watcher) translate(r dhcp) (*data.DHCP, *data.Netboot, error) {
 		d.NTPServers = append(d.NTPServers, ip)
 	}
 
+	// vlanid
+	d.VLANID = r.VLANID
+
 	// lease time
 	d.LeaseTime = uint32(r.LeaseTime)
+
+	// arch
+	d.Arch = r.Arch
 
 	// domain search
 	d.DomainSearch = r.DomainSearch
@@ -247,6 +310,21 @@ func (w *Watcher) translate(r dhcp) (*data.DHCP, *data.Netboot, error) {
 			return nil, nil, fmt.Errorf("%w: %w", err, errParseURL)
 		}
 		n.IPXEScriptURL = u
+	}
+
+	// ipxe script
+	if r.Netboot.IPXEScript != "" {
+		n.IPXEScript = r.Netboot.IPXEScript
+	}
+
+	// console
+	if r.Netboot.Console != "" {
+		n.Console = r.Netboot.Console
+	}
+
+	// facility
+	if r.Netboot.Facility != "" {
+		n.Facility = r.Netboot.Facility
 	}
 
 	return d, n, nil

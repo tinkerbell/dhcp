@@ -15,6 +15,7 @@ import (
 	"github.com/go-logr/stdr"
 	"github.com/tinkerbell/dhcp"
 	"github.com/tinkerbell/dhcp/backend/file"
+	"github.com/tinkerbell/dhcp/handler"
 	"github.com/tinkerbell/dhcp/handler/reservation"
 )
 
@@ -34,7 +35,7 @@ func main() {
 		panic(err)
 	}
 
-	handler := &reservation.Handler{
+	h := &reservation.Handler{
 		Log:    l,
 		IPAddr: netip.MustParseAddr("192.168.2.225"),
 		Netboot: reservation.Netboot{
@@ -47,12 +48,12 @@ func main() {
 		Backend:     backend,
 	}
 	listener := &dhcp.Listener{}
-	l.Info("starting server", "addr", handler.IPAddr)
-	l.Error(listener.ListenAndServe(ctx, handler), "done")
+	l.Info("starting server", "addr", h.IPAddr)
+	l.Error(listener.ListenAndServe(ctx, h), "done")
 	l.Info("done")
 }
 
-func fileBackend(ctx context.Context, l logr.Logger, f string) (reservation.BackendReader, error) {
+func fileBackend(ctx context.Context, l logr.Logger, f string) (handler.BackendReader, error) {
 	fb, err := file.NewWatcher(l, f)
 	if err != nil {
 		return nil, err

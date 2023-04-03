@@ -22,7 +22,9 @@ type DHCP struct {
 	DomainName       string           // DHCP option 15.
 	BroadcastAddress netip.Addr       // DHCP option 28.
 	NTPServers       []net.IP         // DHCP option 42.
+	VLANID           string           // DHCP option 43.116.
 	LeaseTime        uint32           // DHCP option 51.
+	Arch             string           // DHCP option 93.
 	DomainSearch     []string         // DHCP option 119.
 }
 
@@ -30,6 +32,9 @@ type DHCP struct {
 type Netboot struct {
 	AllowNetboot  bool     // If true, the client will be provided netboot options in the DHCP offer/ack.
 	IPXEScriptURL *url.URL // Overrides a default value that is passed into DHCP on startup.
+	IPXEScript    string   // Overrides a default value that is passed into DHCP on startup.
+	Console       string
+	Facility      string
 }
 
 // EncodeToAttributes returns a slice of opentelemetry attributes that can be used to set span.SetAttributes.
