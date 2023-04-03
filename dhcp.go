@@ -2,11 +2,11 @@
 package dhcp
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
 	"net/netip"
-	"sync"
 
 	"github.com/imdario/mergo"
 	"github.com/insomniacslk/dhcp/dhcpv4"
@@ -26,7 +26,6 @@ func (e *noConnError) Error() string {
 // Listener is a DHCPv4 server.
 type Listener struct {
 	Addr     netip.AddrPort
-	srvMu    sync.Mutex
 	srv      *server4.Server
 	handlers []Handler
 }
@@ -47,15 +46,15 @@ func (l *Listener) Handler(conn net.PacketConn, peer net.Addr, pkt *dhcpv4.DHCPv
 }
 
 // Serve will listen for DHCP messages on the given net.PacketConn and call the handler for each.
-func Serve(c net.PacketConn, h ...Handler) error {
+func Serve(ctx context.Context, c net.PacketConn, h ...Handler) error {
 	srv := &Listener{handlers: h}
 
-	return srv.Serve(c)
+	return srv.Serve(ctx, c)
 }
 
 // Serve will listen for DHCP messages on the given net.PacketConn and call the handler in *Listener for each.
 // If no handler is specified, a Noop handler will be used.
-func (l *Listener) Serve(c net.PacketConn) error {
+func (l *Listener) Serve(ctx context.Context, c net.PacketConn) error {
 	if len(l.handlers) == 0 {
 		l.handlers = append(l.handlers, &noop.Handler{})
 	}
@@ -66,15 +65,25 @@ func (l *Listener) Serve(c net.PacketConn) error {
 	if err != nil {
 		return fmt.Errorf("failed to create dhcpv4 server: %w", err)
 	}
-	l.srvMu.Lock()
-	l.srv = dhcp
-	l.srvMu.Unlock()
 
-	return l.srv.Serve()
+	errCh := make(chan error, 1)
+	go func() {
+		err = dhcp.Serve()
+		if err != nil {
+			errCh <- err
+		}
+	}()
+
+	select {
+	case <-ctx.Done():
+		return dhcp.Close()
+	case e := <-errCh:
+		return e
+	}
 }
 
 // ListenAndServe will listen for DHCP messages and call the given handler for each.
-func (l *Listener) ListenAndServe(h ...Handler) error {
+func (l *Listener) ListenAndServe(ctx context.Context, h ...Handler) error {
 	if len(h) == 0 {
 		l.handlers = append(l.handlers, &noop.Handler{})
 	}
@@ -95,13 +104,11 @@ func (l *Listener) ListenAndServe(h ...Handler) error {
 		return fmt.Errorf("failed to create udp connection: %w", err)
 	}
 
-	return l.Serve(conn)
+	return l.Serve(ctx, conn)
 }
 
 // Shutdown closes the listener.
 func (l *Listener) Shutdown() error {
-	l.srvMu.Lock()
-	defer l.srvMu.Unlock()
 	if l.srv == nil {
 		return errors.New("no server to shutdown")
 	}
