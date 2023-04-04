@@ -31,6 +31,7 @@ type Backend struct {
 // NewBackend returns a controller-runtime cluster.Cluster with the Tinkerbell runtime
 // scheme registered, and indexers for:
 // * Hardware by MAC address
+// * Hardware by IP address
 //
 // Callers must instantiate the client-side cache by calling Start() before use.
 func NewBackend(conf *rest.Config, opts ...cluster.Option) (*Backend, error) {
@@ -52,8 +53,12 @@ func NewBackend(conf *rest.Config, opts ...cluster.Option) (*Backend, error) {
 		return nil, fmt.Errorf("failed to create new cluster config: %w", err)
 	}
 
-	if err := c.GetFieldIndexer().IndexField(context.Background(), &v1alpha1.Hardware{}, ".spec.interfaces.dhcp.mac", controllers.HardwareMacIndexFunc); err != nil {
+	if err := c.GetFieldIndexer().IndexField(context.Background(), &v1alpha1.Hardware{}, controllers.HardwareMACAddrIndex, controllers.HardwareMacIndexFunc); err != nil {
 		return nil, fmt.Errorf("failed to setup indexer: %w", err)
+	}
+
+	if err := c.GetFieldIndexer().IndexField(context.Background(), &v1alpha1.Hardware{}, controllers.HardwareIPAddrIndex, controllers.HardwareIPIndexFunc); err != nil {
+		return nil, fmt.Errorf("failed to setup indexer(.spec.interfaces.dhcp.ip.address): %w", err)
 	}
 
 	return &Backend{cluster: c}, nil
@@ -74,7 +79,7 @@ func (b *Backend) GetByMac(ctx context.Context, mac net.HardwareAddr) (*data.DHC
 	if err := b.cluster.GetClient().List(ctx, hardwareList, &client.MatchingFields{controllers.HardwareMACAddrIndex: mac.String()}); err != nil {
 		span.SetStatus(codes.Error, err.Error())
 
-		return nil, nil, fmt.Errorf("failed listing hardware: %w", err)
+		return nil, nil, fmt.Errorf("failed listing hardware for (%v): %w", mac, err)
 	}
 
 	if len(hardwareList.Items) == 0 {
@@ -131,7 +136,7 @@ func (b *Backend) GetByIP(ctx context.Context, ip net.IP) (*data.DHCP, *data.Net
 	if err := b.cluster.GetClient().List(ctx, hardwareList, &client.MatchingFields{controllers.HardwareIPAddrIndex: ip.String()}); err != nil {
 		span.SetStatus(codes.Error, err.Error())
 
-		return nil, nil, fmt.Errorf("failed listing hardware: %w", err)
+		return nil, nil, fmt.Errorf("failed listing hardware for (%v): %w", ip, err)
 	}
 
 	if len(hardwareList.Items) == 0 {
@@ -142,7 +147,7 @@ func (b *Backend) GetByIP(ctx context.Context, ip net.IP) (*data.DHCP, *data.Net
 	}
 
 	if len(hardwareList.Items) > 1 {
-		err := fmt.Errorf("got %d hardware objects for mac %s, expected only 1", len(hardwareList.Items), ip)
+		err := fmt.Errorf("got %d hardware objects for ip: %s, expected only 1", len(hardwareList.Items), ip)
 		span.SetStatus(codes.Error, err.Error())
 
 		return nil, nil, err
