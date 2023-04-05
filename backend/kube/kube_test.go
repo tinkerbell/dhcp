@@ -11,6 +11,7 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/tinkerbell/dhcp/data"
 	"github.com/tinkerbell/tink/pkg/apis/core/v1alpha1"
+	"github.com/tinkerbell/tink/pkg/controllers"
 	"k8s.io/apimachinery/pkg/api/meta"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -220,6 +221,13 @@ func TestGetByIP(t *testing.T) {
 				t.Logf("%+v", tc.hwObject[0].Spec.Interfaces[0].DHCP)
 				t.Logf("%+v", tc.hwObject[0].Spec.Interfaces[0].DHCP.IP)
 				ct = ct.WithLists(&v1alpha1.HardwareList{Items: tc.hwObject})
+				ct = ct.WithIndex(&v1alpha1.Hardware{}, controllers.HardwareIPAddrIndex, func(obj client.Object) []string {
+					if !tc.shouldErr {
+						hw := obj.(*v1alpha1.Hardware)
+						return []string{hw.Spec.Interfaces[0].DHCP.IP.Address}
+					}
+					return []string{}
+				})
 			}
 			cl := ct.Build()
 
@@ -310,6 +318,13 @@ func TestGetByMac(t *testing.T) {
 				t.Logf("%+v", tc.hwObject[0].Spec.Interfaces[0].DHCP)
 				t.Logf("%+v", tc.hwObject[0].Spec.Interfaces[0].DHCP.IP)
 				ct = ct.WithLists(&v1alpha1.HardwareList{Items: tc.hwObject})
+				ct = ct.WithIndex(&v1alpha1.Hardware{}, controllers.HardwareMACAddrIndex, func(obj client.Object) []string {
+					if !tc.shouldErr {
+						hw := obj.(*v1alpha1.Hardware)
+						return []string{hw.Spec.Interfaces[0].DHCP.MAC}
+					}
+					return []string{}
+				})
 			}
 			cl := ct.Build()
 
