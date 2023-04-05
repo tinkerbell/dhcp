@@ -11,6 +11,7 @@ import (
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/tinkerbell/dhcp/data"
 	"github.com/tinkerbell/tink/pkg/apis/core/v1alpha1"
+	"github.com/tinkerbell/tink/pkg/controllers"
 	"k8s.io/apimachinery/pkg/api/meta"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -176,10 +177,10 @@ func TestGetByIP(t *testing.T) {
 		shouldErr   bool
 		failToList  bool
 	}{
-		"empty hardware list":    {shouldErr: true},
+		"empty hardware list":    {shouldErr: true, hwObject: []v1alpha1.Hardware{}},
 		"more than one hardware": {shouldErr: true, hwObject: []v1alpha1.Hardware{hwObject1, hwObject2}},
-		"bad dhcp data":          {shouldErr: true, hwObject: []v1alpha1.Hardware{badDHCPObject}},
-		"bad netboot data":       {shouldErr: true, hwObject: []v1alpha1.Hardware{badNetbootObject}},
+		"bad dhcp data":          {shouldErr: true, hwObject: []v1alpha1.Hardware{badDHCPObject2}},
+		"bad netboot data":       {shouldErr: true, hwObject: []v1alpha1.Hardware{badNetbootObject2}},
 		"fail to list hardware":  {shouldErr: true, failToList: true},
 		"good data": {hwObject: []v1alpha1.Hardware{hwObject1}, wantDHCP: &data.DHCP{
 			MACAddress:     net.HardwareAddr{0x3c, 0xec, 0xef, 0x4c, 0x4f, 0x54},
@@ -215,6 +216,13 @@ func TestGetByIP(t *testing.T) {
 			if !tc.failToList {
 				ct = ct.WithScheme(rs)
 				ct = ct.WithRuntimeObjects(&v1alpha1.HardwareList{})
+				ct = ct.WithIndex(&v1alpha1.Hardware{}, controllers.HardwareIPAddrIndex, func(obj client.Object) []string {
+					var list []string
+					for _, elem := range tc.hwObject {
+						list = append(list, elem.Spec.Interfaces[0].DHCP.IP.Address)
+					}
+					return list
+				})
 			}
 			if len(tc.hwObject) > 0 {
 				t.Logf("%+v", tc.hwObject[0].Spec.Interfaces[0].DHCP)
@@ -305,10 +313,17 @@ func TestGetByMac(t *testing.T) {
 			if !tc.failToList {
 				ct = ct.WithScheme(rs)
 				ct = ct.WithRuntimeObjects(&v1alpha1.HardwareList{})
+				ct = ct.WithIndex(&v1alpha1.Hardware{}, controllers.HardwareMACAddrIndex, func(obj client.Object) []string {
+					var list []string
+					for _, elem := range tc.hwObject {
+						list = append(list, elem.Spec.Interfaces[0].DHCP.MAC)
+					}
+					return list
+				})
 			}
 			if len(tc.hwObject) > 0 {
 				t.Logf("%+v", tc.hwObject[0].Spec.Interfaces[0].DHCP)
-				t.Logf("%+v", tc.hwObject[0].Spec.Interfaces[0].DHCP.IP)
+				t.Logf("%+v", tc.hwObject[0].Spec.Interfaces[0].DHCP.MAC)
 				ct = ct.WithLists(&v1alpha1.HardwareList{Items: tc.hwObject})
 			}
 			cl := ct.Build()
@@ -445,8 +460,45 @@ var badDHCPObject = v1alpha1.Hardware{
 					Arch:     "x86_64",
 					Hostname: "sm01",
 					IP: &v1alpha1.IP{
-						Address: "bad-address",
-						Gateway: "172.16.10.1",
+						Address: "172.16.10.100",
+						Gateway: "bad-address",
+						Netmask: "255.255.255.0",
+					},
+					LeaseTime:   86400,
+					MAC:         "3c:ec:ef:4c:4f:54",
+					NameServers: []string{"1.1.1.1"},
+					UEFI:        true,
+				},
+			},
+		},
+	},
+}
+
+var badDHCPObject2 = v1alpha1.Hardware{
+	TypeMeta: v1.TypeMeta{
+		Kind:       "Hardware",
+		APIVersion: "tinkerbell.org/v1alpha1",
+	},
+	ObjectMeta: v1.ObjectMeta{
+		Name:      "machine2",
+		Namespace: "default",
+	},
+	Spec: v1alpha1.HardwareSpec{
+		Interfaces: []v1alpha1.Interface{
+			{
+				Netboot: &v1alpha1.Netboot{
+					AllowPXE:      &[]bool{true}[0],
+					AllowWorkflow: &[]bool{true}[0],
+					IPXE: &v1alpha1.IPXE{
+						URL: "http://netboot.xyz",
+					},
+				},
+				DHCP: &v1alpha1.DHCP{
+					Arch:     "x86_64",
+					Hostname: "sm01",
+					IP: &v1alpha1.IP{
+						Address: "172.16.10.100",
+						Gateway: "bad-address",
 						Netmask: "255.255.255.0",
 					},
 					LeaseTime:   86400,
@@ -480,6 +532,39 @@ var badNetbootObject = v1alpha1.Hardware{
 					Hostname: "sm01",
 					IP: &v1alpha1.IP{
 						Address: "172.16.10.101",
+						Gateway: "172.16.10.1",
+						Netmask: "255.255.255.0",
+					},
+					LeaseTime:   86400,
+					MAC:         "3c:ec:ef:4c:4f:54",
+					NameServers: []string{"1.1.1.1"},
+				},
+			},
+		},
+	},
+}
+
+var badNetbootObject2 = v1alpha1.Hardware{
+	TypeMeta: v1.TypeMeta{
+		Kind:       "Hardware",
+		APIVersion: "tinkerbell.org/v1alpha1",
+	},
+	ObjectMeta: v1.ObjectMeta{
+		Name:      "machine2",
+		Namespace: "default",
+	},
+	Spec: v1alpha1.HardwareSpec{
+		Interfaces: []v1alpha1.Interface{
+			{
+				Netboot: &v1alpha1.Netboot{
+					IPXE: &v1alpha1.IPXE{
+						URL: "bad-url",
+					},
+				},
+				DHCP: &v1alpha1.DHCP{
+					Hostname: "sm01",
+					IP: &v1alpha1.IP{
+						Address: "172.16.10.100",
 						Gateway: "172.16.10.1",
 						Netmask: "255.255.255.0",
 					},

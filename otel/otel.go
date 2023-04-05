@@ -51,7 +51,7 @@ func (e *Encoder) Encode(pkt *dhcpv4.DHCPv4, namespace string, encoders ...func(
 	for _, elem := range encoders {
 		kv, err := elem(pkt, namespace)
 		if err != nil {
-			e.Log.V(1).Info("opentelemetry attribute not added", "error", fmt.Sprintf("%v", err))
+			e.Log.V(2).Info("opentelemetry attribute not added", "error", fmt.Sprintf("%v", err))
 			continue
 		}
 		attrs = append(attrs, kv)
