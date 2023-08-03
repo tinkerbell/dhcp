@@ -8,7 +8,7 @@ import (
 	"net"
 	"net/netip"
 
-	"github.com/imdario/mergo"
+	"dario.cat/mergo"
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/insomniacslk/dhcp/dhcpv4/server4"
 	"github.com/tinkerbell/dhcp/handler/noop"

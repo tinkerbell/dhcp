@@ -3,6 +3,7 @@ package kube
 import (
 	"context"
 	"net"
+	"net/http"
 	"net/netip"
 	"net/url"
 	"testing"
@@ -10,8 +11,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/tinkerbell/dhcp/data"
-	"github.com/tinkerbell/tink/pkg/apis/core/v1alpha1"
-	"github.com/tinkerbell/tink/pkg/controllers"
+	"github.com/tinkerbell/tink/api/v1alpha1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -33,10 +33,10 @@ func TestNewBackend(t *testing.T) {
 		"no config": {shouldErr: true},
 		"failed index field": {shouldErr: true, conf: new(rest.Config), opt: func(o *cluster.Options) {
 			cl := fake.NewClientBuilder().Build()
-			o.NewClient = func(cache cache.Cache, config *rest.Config, options client.Options, uncachedObjects ...client.Object) (client.Client, error) {
+			o.NewClient = func(config *rest.Config, options client.Options) (client.Client, error) {
 				return cl, nil
 			}
-			o.MapperProvider = func(c *rest.Config) (meta.RESTMapper, error) {
+			o.MapperProvider = func(c *rest.Config, httpClient *http.Client) (meta.RESTMapper, error) {
 				return cl.RESTMapper(), nil
 			}
 		}},
@@ -216,7 +216,7 @@ func TestGetByIP(t *testing.T) {
 			if !tc.failToList {
 				ct = ct.WithScheme(rs)
 				ct = ct.WithRuntimeObjects(&v1alpha1.HardwareList{})
-				ct = ct.WithIndex(&v1alpha1.Hardware{}, controllers.HardwareIPAddrIndex, func(obj client.Object) []string {
+				ct = ct.WithIndex(&v1alpha1.Hardware{}, HardwareByIPAddr, func(obj client.Object) []string {
 					var list []string
 					for _, elem := range tc.hwObject {
 						list = append(list, elem.Spec.Interfaces[0].DHCP.IP.Address)
@@ -232,10 +232,10 @@ func TestGetByIP(t *testing.T) {
 			cl := ct.Build()
 
 			fn := func(o *cluster.Options) {
-				o.NewClient = func(cache cache.Cache, config *rest.Config, options client.Options, uncachedObjects ...client.Object) (client.Client, error) {
+				o.NewClient = func(config *rest.Config, options client.Options) (client.Client, error) {
 					return cl, nil
 				}
-				o.MapperProvider = func(c *rest.Config) (meta.RESTMapper, error) {
+				o.MapperProvider = func(_ *rest.Config, _ *http.Client) (meta.RESTMapper, error) {
 					return cl.RESTMapper(), nil
 				}
 				o.NewCache = func(config *rest.Config, options cache.Options) (cache.Cache, error) {
@@ -313,7 +313,7 @@ func TestGetByMac(t *testing.T) {
 			if !tc.failToList {
 				ct = ct.WithScheme(rs)
 				ct = ct.WithRuntimeObjects(&v1alpha1.HardwareList{})
-				ct = ct.WithIndex(&v1alpha1.Hardware{}, controllers.HardwareMACAddrIndex, func(obj client.Object) []string {
+				ct = ct.WithIndex(&v1alpha1.Hardware{}, HardwareByMACAddr, func(obj client.Object) []string {
 					var list []string
 					for _, elem := range tc.hwObject {
 						list = append(list, elem.Spec.Interfaces[0].DHCP.MAC)
@@ -329,10 +329,10 @@ func TestGetByMac(t *testing.T) {
 			cl := ct.Build()
 
 			fn := func(o *cluster.Options) {
-				o.NewClient = func(cache cache.Cache, config *rest.Config, options client.Options, uncachedObjects ...client.Object) (client.Client, error) {
+				o.NewClient = func(config *rest.Config, options client.Options) (client.Client, error) {
 					return cl, nil
 				}
-				o.MapperProvider = func(c *rest.Config) (meta.RESTMapper, error) {
+				o.MapperProvider = func(c *rest.Config, httpClient *http.Client) (meta.RESTMapper, error) {
 					return cl.RESTMapper(), nil
 				}
 				o.NewCache = func(config *rest.Config, options cache.Options) (cache.Cache, error) {
