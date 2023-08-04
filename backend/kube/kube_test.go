@@ -216,7 +216,7 @@ func TestGetByIP(t *testing.T) {
 			if !tc.failToList {
 				ct = ct.WithScheme(rs)
 				ct = ct.WithRuntimeObjects(&v1alpha1.HardwareList{})
-				ct = ct.WithIndex(&v1alpha1.Hardware{}, HardwareByIPAddr, func(obj client.Object) []string {
+				ct = ct.WithIndex(&v1alpha1.Hardware{}, IPAddrIndex, func(obj client.Object) []string {
 					var list []string
 					for _, elem := range tc.hwObject {
 						list = append(list, elem.Spec.Interfaces[0].DHCP.IP.Address)
@@ -313,7 +313,7 @@ func TestGetByMac(t *testing.T) {
 			if !tc.failToList {
 				ct = ct.WithScheme(rs)
 				ct = ct.WithRuntimeObjects(&v1alpha1.HardwareList{})
-				ct = ct.WithIndex(&v1alpha1.Hardware{}, HardwareByMACAddr, func(obj client.Object) []string {
+				ct = ct.WithIndex(&v1alpha1.Hardware{}, MACAddrIndex, func(obj client.Object) []string {
 					var list []string
 					for _, elem := range tc.hwObject {
 						list = append(list, elem.Spec.Interfaces[0].DHCP.MAC)
