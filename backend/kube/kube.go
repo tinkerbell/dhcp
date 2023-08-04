@@ -10,8 +10,7 @@ import (
 	"net/url"
 
 	"github.com/tinkerbell/dhcp/data"
-	"github.com/tinkerbell/tink/pkg/apis/core/v1alpha1"
-	"github.com/tinkerbell/tink/pkg/controllers"
+	"github.com/tinkerbell/tink/api/v1alpha1"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/codes"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -53,11 +52,11 @@ func NewBackend(conf *rest.Config, opts ...cluster.Option) (*Backend, error) {
 		return nil, fmt.Errorf("failed to create new cluster config: %w", err)
 	}
 
-	if err := c.GetFieldIndexer().IndexField(context.Background(), &v1alpha1.Hardware{}, controllers.HardwareMACAddrIndex, controllers.HardwareMacIndexFunc); err != nil {
+	if err := c.GetFieldIndexer().IndexField(context.Background(), &v1alpha1.Hardware{}, MACAddrIndex, MACAddrs); err != nil {
 		return nil, fmt.Errorf("failed to setup indexer: %w", err)
 	}
 
-	if err := c.GetFieldIndexer().IndexField(context.Background(), &v1alpha1.Hardware{}, controllers.HardwareIPAddrIndex, controllers.HardwareIPIndexFunc); err != nil {
+	if err := c.GetFieldIndexer().IndexField(context.Background(), &v1alpha1.Hardware{}, IPAddrIndex, IPAddrs); err != nil {
 		return nil, fmt.Errorf("failed to setup indexer(.spec.interfaces.dhcp.ip.address): %w", err)
 	}
 
@@ -76,7 +75,7 @@ func (b *Backend) GetByMac(ctx context.Context, mac net.HardwareAddr) (*data.DHC
 	defer span.End()
 	hardwareList := &v1alpha1.HardwareList{}
 
-	if err := b.cluster.GetClient().List(ctx, hardwareList, &client.MatchingFields{controllers.HardwareMACAddrIndex: mac.String()}); err != nil {
+	if err := b.cluster.GetClient().List(ctx, hardwareList, &client.MatchingFields{MACAddrIndex: mac.String()}); err != nil {
 		span.SetStatus(codes.Error, err.Error())
 
 		return nil, nil, fmt.Errorf("failed listing hardware for (%v): %w", mac, err)
@@ -133,7 +132,7 @@ func (b *Backend) GetByIP(ctx context.Context, ip net.IP) (*data.DHCP, *data.Net
 	defer span.End()
 	hardwareList := &v1alpha1.HardwareList{}
 
-	if err := b.cluster.GetClient().List(ctx, hardwareList, &client.MatchingFields{controllers.HardwareIPAddrIndex: ip.String()}); err != nil {
+	if err := b.cluster.GetClient().List(ctx, hardwareList, &client.MatchingFields{IPAddrIndex: ip.String()}); err != nil {
 		span.SetStatus(codes.Error, err.Error())
 
 		return nil, nil, fmt.Errorf("failed listing hardware for (%v): %w", ip, err)

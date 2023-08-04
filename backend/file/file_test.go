@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"io/ioutil"
 	"log"
 	"net"
 	"net/netip"
@@ -62,7 +61,7 @@ func TestNewWatcher(t *testing.T) {
 }
 
 func createFile(content []byte) (string, error) {
-	file, err := ioutil.TempFile("", "prefix")
+	file, err := os.CreateTemp("", "prefix")
 	if err != nil {
 		return "", err
 	}
