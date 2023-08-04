@@ -1,6 +1,8 @@
 package kube
 
 import (
+	"fmt"
+
 	"github.com/tinkerbell/tink/api/v1alpha1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -25,6 +27,8 @@ func GetMACs(h *v1alpha1.Hardware) []string {
 			macs = append(macs, i.DHCP.MAC)
 		}
 	}
+	fmt.Printf("macs: %+v\n", macs)
+	fmt.Println(macs == nil)
 	return macs
 }
 
