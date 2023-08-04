@@ -43,7 +43,6 @@ func TestMACAddrs(t *testing.T) {
 			}
 		})
 	}
-
 }
 
 func TestIPAddrs(t *testing.T) {
@@ -84,7 +83,6 @@ func TestIPAddrs(t *testing.T) {
 	}
 	for name, tc := range tests {
 		t.Run(name, func(t *testing.T) {
-
 			got := IPAddrs(tc.hw)
 			if diff := cmp.Diff(tc.want, got); diff != "" {
 				t.Errorf("unexpected IPs (-want +got):\n%s", diff)
