@@ -31,6 +31,9 @@ type Handler struct {
 	// For example, the filename will be "snp.efi-00-23b1e307bb35484f535a1f772c06910e-d887dc3912240434-01".
 	// <original filename>-00-<trace id>-<span id>-<trace flags>
 	OTELEnabled bool
+
+	// SyslogAddr is the address to send syslog messages to. DHCP Option 7.
+	SyslogAddr netip.Addr
 }
 
 // Netboot holds the netboot configuration details used in running a DHCP server.

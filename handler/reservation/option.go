@@ -104,6 +104,9 @@ func (h *Handler) setDHCPOpts(_ context.Context, _ *dhcpv4.DHCPv4, d *data.DHCP)
 	if d.DefaultGateway.Compare(netip.Addr{}) != 0 {
 		mods = append(mods, dhcpv4.WithRouter(d.DefaultGateway.AsSlice()))
 	}
+	if h.SyslogAddr.Compare(netip.Addr{}) != 0 {
+		mods = append(mods, dhcpv4.WithOption(dhcpv4.OptGeneric(dhcpv4.OptionLogServer, h.SyslogAddr.AsSlice())))
+	}
 
 	return mods
 }
