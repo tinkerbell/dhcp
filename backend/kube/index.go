@@ -6,7 +6,7 @@ import (
 )
 
 // MACAddrIndex is an index used with a controller-runtime client to lookup hardware by MAC.
-const MACAddrIndex = ".Spec.NetworkInterfaces.MAC"
+const MACAddrIndex = ".Spec.Interfaces.MAC"
 
 // MACAddrs returns a list of MAC addresses for a Hardware object.
 func MACAddrs(obj client.Object) []string {
@@ -30,7 +30,7 @@ func GetMACs(h *v1alpha1.Hardware) []string {
 }
 
 // IPAddrIndex is an index used with a controller-runtime client to lookup hardware by IP.
-const IPAddrIndex = ".Spec.NetworkInterfaces.DHCP.IP"
+const IPAddrIndex = ".Spec.Interfaces.DHCP.IP"
 
 // IPAddrs returns a list of IP addresses for a Hardware object.
 func IPAddrs(obj client.Object) []string {
