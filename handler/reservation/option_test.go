@@ -33,7 +33,7 @@ func TestSetDHCPOpts(t *testing.T) {
 		want   *dhcpv4.DHCPv4
 	}{
 		"success": {
-			server: Handler{Log: logr.Discard()},
+			server: Handler{Log: logr.Discard(), SyslogAddr: netip.MustParseAddr("192.168.7.7")},
 			args: args{
 				in0: context.Background(),
 				m:   &dhcpv4.DHCPv4{Options: dhcpv4.OptionsFromList(dhcpv4.OptParameterRequestList(dhcpv4.OptionSubnetMask))},
@@ -68,6 +68,7 @@ func TestSetDHCPOpts(t *testing.T) {
 				ServerIPAddr:  []byte{0, 0, 0, 0},
 				GatewayIPAddr: []byte{0, 0, 0, 0},
 				Options: dhcpv4.OptionsFromList(
+					dhcpv4.OptGeneric(dhcpv4.OptionLogServer, []byte{192, 168, 7, 7}),
 					dhcpv4.OptSubnetMask(net.IPMask{255, 255, 255, 0}),
 					dhcpv4.OptBroadcastAddress(net.IP{192, 168, 4, 255}),
 					dhcpv4.OptIPAddressLeaseTime(time.Duration(84600)*time.Second),
@@ -100,8 +101,9 @@ func TestSetDHCPOpts(t *testing.T) {
 					Enabled:           tt.server.Netboot.Enabled,
 					UserClass:         tt.server.Netboot.UserClass,
 				},
-				IPAddr:  tt.server.IPAddr,
-				Backend: tt.server.Backend,
+				IPAddr:     tt.server.IPAddr,
+				Backend:    tt.server.Backend,
+				SyslogAddr: tt.server.SyslogAddr,
 			}
 			mods := s.setDHCPOpts(tt.args.in0, tt.args.m, tt.args.d)
 			finalPkt, err := dhcpv4.New(mods...)
