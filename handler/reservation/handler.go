@@ -61,7 +61,7 @@ func (h *Handler) Handle(conn net.PacketConn, peer net.Addr, pkt *dhcpv4.DHCPv4)
 		}
 
 		reply = h.updateMsg(ctx, pkt, d, n, dhcpv4.MessageTypeOffer)
-		log = log.WithValues("type", dhcpv4.MessageTypeOffer.String())
+		log = log.WithValues("type", dhcpv4.MessageTypeOffer.String(), "ipAddress", d.IPAddress.String())
 	case dhcpv4.MessageTypeRequest:
 		d, n, err := h.readBackend(ctx, pkt.ClientHWAddr)
 		if err != nil {
@@ -71,7 +71,7 @@ func (h *Handler) Handle(conn net.PacketConn, peer net.Addr, pkt *dhcpv4.DHCPv4)
 			return
 		}
 		reply = h.updateMsg(ctx, pkt, d, n, dhcpv4.MessageTypeAck)
-		log = log.WithValues("type", dhcpv4.MessageTypeAck.String())
+		log = log.WithValues("type", dhcpv4.MessageTypeAck.String(), "ipAddress", d.IPAddress.String())
 	case dhcpv4.MessageTypeRelease:
 		// Since the design of this DHCP server is that all IP addresses are
 		// Host reservations, when a client releases an address, the server
