@@ -70,7 +70,7 @@ func (h *Handler) Handle(ctx context.Context, conn *ipv4.PacketConn, p data.Pack
 
 	defer span.End()
 
-	reply := &dhcpv4.DHCPv4{}
+	var reply *dhcpv4.DHCPv4
 	switch mt := p.Pkt.MessageType(); mt {
 	case dhcpv4.MessageTypeDiscover:
 		d, n, err := h.readBackend(ctx, p.Pkt.ClientHWAddr)
@@ -128,13 +128,6 @@ func (h *Handler) Handle(ctx context.Context, conn *ipv4.PacketConn, p data.Pack
 	if p.Md != nil {
 		cm.IfIndex = p.Md.IfIndex
 	}
-	fmt.Println("peer 1", p.Peer.String())
-	fmt.Println("peer 2", p.Peer)
-	fmt.Println(p.Peer.String() == "")
-	fmt.Println(p.Peer == nil)
-	fmt.Printf("%+v\n", p)
-	fmt.Printf("cm %+v\n", cm)
-	fmt.Printf("reply %+v\n", reply)
 	if _, err := conn.WriteTo(reply.ToBytes(), cm, p.Peer); err != nil {
 		log.Error(err, "failed to send DHCP")
 		span.SetStatus(codes.Error, err.Error())
