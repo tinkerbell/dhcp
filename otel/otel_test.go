@@ -495,6 +495,31 @@ func TestSetHeaderFlags(t *testing.T) {
 	}
 }
 
+func TestSetHeaderTransactionID(t *testing.T) {
+	tests := map[string]struct {
+		input   *dhcpv4.DHCPv4
+		want    attribute.KeyValue
+		wantErr error
+	}{
+		"success": {
+			input: &dhcpv4.DHCPv4{TransactionID: dhcpv4.TransactionID{0x00, 0x00, 0x00, 0x00}},
+			want:  attribute.String("DHCP.testing.Header.transactionID", "0x00000000"),
+		},
+		"error": {wantErr: &notFoundError{}},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			got, err := EncodeTransactionID(tt.input, "testing")
+			if tt.wantErr != nil && !OptNotFound(err) {
+				t.Fatalf("EncodeTransactionID() error (type: %T) = %[1]v, wantErr (type: %T) %[2]v", err, tt.wantErr)
+			}
+			if diff := cmp.Diff(got, tt.want, cmpopts.IgnoreUnexported(attribute.Value{})); diff != "" {
+				t.Fatal(diff)
+			}
+		})
+	}
+}
+
 func TestSetHeaderYIADDR(t *testing.T) {
 	tests := map[string]struct {
 		input   *dhcpv4.DHCPv4
