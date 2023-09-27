@@ -35,17 +35,17 @@ type mockBackend struct {
 	hardwareNotFound bool
 }
 
-type hwNotFound struct{}
+type hwNotFoundError struct{}
 
-func (hwNotFound) NotFound() bool { return true }
-func (hwNotFound) Error() string  { return "not found" }
+func (hwNotFoundError) NotFound() bool { return true }
+func (hwNotFoundError) Error() string  { return "not found" }
 
 func (m *mockBackend) GetByMac(context.Context, net.HardwareAddr) (*data.DHCP, *data.Netboot, error) {
 	if m.err != nil {
 		return nil, nil, m.err
 	}
 	if m.hardwareNotFound {
-		return nil, nil, hwNotFound{}
+		return nil, nil, hwNotFoundError{}
 	}
 	d := &data.DHCP{
 		MACAddress:     []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06},
@@ -76,7 +76,7 @@ func (m *mockBackend) GetByMac(context.Context, net.HardwareAddr) (*data.DHCP, *
 
 func (m *mockBackend) GetByIP(context.Context, net.IP) (*data.DHCP, *data.Netboot, error) {
 	if m.hardwareNotFound {
-		return nil, nil, hwNotFound{}
+		return nil, nil, hwNotFoundError{}
 	}
 	return nil, nil, errors.New("not implemented")
 }
