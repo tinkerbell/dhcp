@@ -24,7 +24,7 @@ type mock struct {
 	Router      net.IP
 }
 
-func (m *mock) Handle(ctx context.Context, conn *ipv4.PacketConn, d data.Packet) {
+func (m *mock) Handle(_ context.Context, conn *ipv4.PacketConn, d data.Packet) {
 	if m.Log.GetSink() == nil {
 		m.Log = logr.Discard()
 	}
