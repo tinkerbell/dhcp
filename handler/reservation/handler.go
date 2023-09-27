@@ -16,6 +16,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
+	"golang.org/x/net/ipv4"
 )
 
 const tracerName = "github.com/tinkerbell/dhcp/server"
@@ -32,45 +33,80 @@ func (h *Handler) setDefaults() {
 }
 
 // Handle responds to DHCP messages with DHCP server options.
-func (h *Handler) Handle(conn net.PacketConn, peer net.Addr, pkt *dhcpv4.DHCPv4) {
+func (h *Handler) Handle(ctx context.Context, conn *ipv4.PacketConn, p data.Packet) {
 	h.setDefaults()
-	if pkt == nil {
+	if p.Pkt == nil {
 		h.Log.Error(errors.New("incoming packet is nil"), "not able to respond when the incoming packet is nil")
 		return
 	}
+	upeer, ok := p.Peer.(*net.UDPAddr)
+	if !ok {
+		h.Log.Error(errors.New("peer is not a UDP connection"), "not able to respond when the peer is not a UDP connection")
+		return
+	}
+	if upeer == nil {
+		h.Log.Error(errors.New("peer is nil"), "not able to respond when the peer is nil")
+		return
+	}
+	if conn == nil {
+		h.Log.Error(errors.New("connection is nil"), "not able to respond when the connection is nil")
+		return
+	}
 
-	log := h.Log.WithValues("mac", pkt.ClientHWAddr.String())
-	log.Info("received DHCP packet", "type", pkt.MessageType().String())
+	var ifName string
+	if p.Md != nil {
+		ifName = p.Md.IfName
+	}
+	log := h.Log.WithValues("mac", p.Pkt.ClientHWAddr.String(), "xid", p.Pkt.TransactionID.String(), "interface", ifName)
 	tracer := otel.Tracer(tracerName)
-	ctx, span := tracer.Start(context.Background(),
-		fmt.Sprintf("DHCP Packet Received: %v", pkt.MessageType().String()),
-		trace.WithAttributes(h.encodeToAttributes(pkt, "request")...),
-		trace.WithAttributes(attribute.String("DHCP.peer", peer.String())),
+	var span trace.Span
+	ctx, span = tracer.Start(
+		ctx,
+		fmt.Sprintf("DHCP Packet Received: %v", p.Pkt.MessageType().String()),
+		trace.WithAttributes(h.encodeToAttributes(p.Pkt, "request")...),
+		trace.WithAttributes(attribute.String("DHCP.peer", p.Peer.String())),
+		trace.WithAttributes(attribute.String("DHCP.server.ifname", ifName)),
 	)
+
 	defer span.End()
 
-	var reply *dhcpv4.DHCPv4
-	switch mt := pkt.MessageType(); mt {
+	reply := &dhcpv4.DHCPv4{}
+	switch mt := p.Pkt.MessageType(); mt {
 	case dhcpv4.MessageTypeDiscover:
-		d, n, err := h.readBackend(ctx, pkt.ClientHWAddr)
+		d, n, err := h.readBackend(ctx, p.Pkt.ClientHWAddr)
 		if err != nil {
-			log.Error(err, "error reading from backend")
+			if hardwareNotFound(err) {
+				span.SetStatus(codes.Ok, "no reservation found")
+				return
+			}
+			log.Info("error reading from backend", "error", err)
 			span.SetStatus(codes.Error, err.Error())
 
 			return
 		}
-
-		reply = h.updateMsg(ctx, pkt, d, n, dhcpv4.MessageTypeOffer)
+		log.Info("received DHCP packet", "type", p.Pkt.MessageType().String())
+		reply = h.updateMsg(ctx, p.Pkt, d, n, dhcpv4.MessageTypeOffer)
+		if bf := reply.BootFileName; bf != "" {
+			log = log.WithValues("bootFileName", bf)
+		}
 		log = log.WithValues("type", dhcpv4.MessageTypeOffer.String(), "ipAddress", d.IPAddress.String())
 	case dhcpv4.MessageTypeRequest:
-		d, n, err := h.readBackend(ctx, pkt.ClientHWAddr)
+		d, n, err := h.readBackend(ctx, p.Pkt.ClientHWAddr)
 		if err != nil {
-			log.Error(err, "error reading from backend")
+			if hardwareNotFound(err) {
+				span.SetStatus(codes.Ok, "no reservation found")
+				return
+			}
+			log.Info("error reading from backend", "error", err)
 			span.SetStatus(codes.Error, err.Error())
 
 			return
 		}
-		reply = h.updateMsg(ctx, pkt, d, n, dhcpv4.MessageTypeAck)
+		log.Info("received DHCP packet", "type", p.Pkt.MessageType().String())
+		reply = h.updateMsg(ctx, p.Pkt, d, n, dhcpv4.MessageTypeAck)
+		if bf := reply.BootFileName; bf != "" {
+			log = log.WithValues("bootFileName", bf)
+		}
 		log = log.WithValues("type", dhcpv4.MessageTypeAck.String(), "ipAddress", d.IPAddress.String())
 	case dhcpv4.MessageTypeRelease:
 		// Since the design of this DHCP server is that all IP addresses are
@@ -88,7 +124,18 @@ func (h *Handler) Handle(conn net.PacketConn, peer net.Addr, pkt *dhcpv4.DHCPv4)
 		return
 	}
 
-	if _, err := conn.WriteTo(reply.ToBytes(), peer); err != nil {
+	cm := &ipv4.ControlMessage{}
+	if p.Md != nil {
+		cm.IfIndex = p.Md.IfIndex
+	}
+	fmt.Println("peer 1", p.Peer.String())
+	fmt.Println("peer 2", p.Peer)
+	fmt.Println(p.Peer.String() == "")
+	fmt.Println(p.Peer == nil)
+	fmt.Printf("%+v\n", p)
+	fmt.Printf("cm %+v\n", cm)
+	fmt.Printf("reply %+v\n", reply)
+	if _, err := conn.WriteTo(reply.ToBytes(), cm, p.Peer); err != nil {
 		log.Error(err, "failed to send DHCP")
 		span.SetStatus(codes.Error, err.Error())
 
@@ -110,7 +157,6 @@ func (h *Handler) readBackend(ctx context.Context, mac net.HardwareAddr) (*data.
 
 	d, n, err := h.Backend.GetByMac(ctx, mac)
 	if err != nil {
-		h.Log.Info("error getting DHCP data from backend", "mac", mac, "error", err)
 		span.SetStatus(codes.Error, err.Error())
 
 		return nil, nil, err
@@ -133,7 +179,7 @@ func (h *Handler) updateMsg(ctx context.Context, pkt *dhcpv4.DHCPv4, d *data.DHC
 	}
 	mods = append(mods, h.setDHCPOpts(ctx, pkt, d)...)
 
-	if h.Netboot.Enabled && h.isNetbootClient(pkt) {
+	if h.Netboot.Enabled && h.isNetbootClient(pkt) == nil {
 		mods = append(mods, h.setNetworkBootOpts(ctx, pkt, n))
 	}
 	reply, err := dhcpv4.NewReplyFromRequest(pkt, mods...)
@@ -156,35 +202,36 @@ func (h *Handler) updateMsg(ctx context.Context, pkt *dhcpv4.DHCPv4, d *data.DHC
 // See: http://www.pix.net/software/pxeboot/archive/pxespec.pdf
 //
 // See: https://www.rfc-editor.org/rfc/rfc4578.html
-func (h *Handler) isNetbootClient(pkt *dhcpv4.DHCPv4) bool {
+func (h *Handler) isNetbootClient(pkt *dhcpv4.DHCPv4) error {
 	h.setDefaults()
+	var err error
 	// only response to DISCOVER and REQUEST packets
 	if pkt.MessageType() != dhcpv4.MessageTypeDiscover && pkt.MessageType() != dhcpv4.MessageTypeRequest {
-		h.Log.Info("not a netboot client", "reason", "message type must be either Discover or Request", "mac", pkt.ClientHWAddr.String(), "message type", pkt.MessageType())
-		return false
+		// h.Log.Info("not a netboot client", "reason", "message type must be either Discover or Request", "mac", pkt.ClientHWAddr.String(), "message type", pkt.MessageType())
+		err = errors.New("message type must be either Discover or Request")
 	}
 	// option 60 must be set
 	if !pkt.Options.Has(dhcpv4.OptionClassIdentifier) {
-		h.Log.Info("not a netboot client", "reason", "option 60 not set", "mac", pkt.ClientHWAddr.String())
-		return false
+		// h.Log.Info("not a netboot client", "reason", "option 60 not set", "mac", pkt.ClientHWAddr.String())
+		err = fmt.Errorf("%w: option 60 not set", err)
 	}
 	// option 60 must start with PXEClient or HTTPClient
 	opt60 := pkt.GetOneOption(dhcpv4.OptionClassIdentifier)
 	if !strings.HasPrefix(string(opt60), string(pxeClient)) && !strings.HasPrefix(string(opt60), string(httpClient)) {
-		h.Log.Info("not a netboot client", "reason", "option 60 not PXEClient or HTTPClient", "mac", pkt.ClientHWAddr.String(), "option 60", string(opt60))
-		return false
+		// h.Log.Info("not a netboot client", "reason", "option 60 not PXEClient or HTTPClient", "mac", pkt.ClientHWAddr.String(), "option 60", string(opt60))
+		err = fmt.Errorf("%w: option 60 not PXEClient or HTTPClient", err)
 	}
 
 	// option 93 must be set
 	if !pkt.Options.Has(dhcpv4.OptionClientSystemArchitectureType) {
-		h.Log.Info("not a netboot client", "reason", "option 93 not set", "mac", pkt.ClientHWAddr.String())
-		return false
+		// h.Log.Info("not a netboot client", "reason", "option 93 not set", "mac", pkt.ClientHWAddr.String())
+		err = fmt.Errorf("%w: option 93 not set", err)
 	}
 
 	// option 94 must be set
 	if !pkt.Options.Has(dhcpv4.OptionClientNetworkInterfaceIdentifier) {
-		h.Log.Info("not a netboot client", "reason", "option 94 not set", "mac", pkt.ClientHWAddr.String())
-		return false
+		// h.Log.Info("not a netboot client", "reason", "option 94 not set", "mac", pkt.ClientHWAddr.String())
+		err = fmt.Errorf("%w: option 94 not set", err)
 	}
 
 	// option 97 must be have correct length or not be set
@@ -199,13 +246,14 @@ func (h *Handler) isNetbootClient(pkt *dhcpv4.DHCPv4) bool {
 	case 17:
 		if guid[0] != 0 {
 			h.Log.Info("not a netboot client", "reason", "option 97 does not start with 0", "mac", pkt.ClientHWAddr.String(), "option 97", string(guid))
-			return false
+			err = fmt.Errorf("%w: option 97 does not start with 0", err)
 		}
 	default:
 		h.Log.Info("not a netboot client", "reason", "option 97 has invalid length (0 or 17)", "mac", pkt.ClientHWAddr.String(), "option 97", string(guid))
-		return false
+		err = fmt.Errorf("%w: option 97 has invalid length (0 or 17)", err)
 	}
-	return true
+
+	return err
 }
 
 // encodeToAttributes takes a DHCP packet and returns opentelemetry key/value attributes.
@@ -214,4 +262,13 @@ func (h *Handler) encodeToAttributes(d *dhcpv4.DHCPv4, namespace string) []attri
 	a := &oteldhcp.Encoder{Log: h.Log}
 
 	return a.Encode(d, namespace, oteldhcp.AllEncoders()...)
+}
+
+// hardwareNotFound returns true if the error is from a hardware record not being found.
+func hardwareNotFound(err error) bool {
+	type hardwareNotFound interface {
+		NotFound() bool
+	}
+	te, ok := err.(hardwareNotFound)
+	return ok && te.NotFound()
 }

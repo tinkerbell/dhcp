@@ -63,7 +63,7 @@ func (e *Encoder) Encode(pkt *dhcpv4.DHCPv4, namespace string, encoders ...func(
 // AllEncoders returns a slice of all available DHCP otel encoders.
 func AllEncoders() []func(d *dhcpv4.DHCPv4, namespace string) (attribute.KeyValue, error) {
 	return []func(d *dhcpv4.DHCPv4, namespace string) (attribute.KeyValue, error){
-		EncodeFlags,
+		EncodeFlags, EncodeTransactionID,
 		EncodeYIADDR, EncodeSIADDR,
 		EncodeCHADDR, EncodeFILE,
 		EncodeOpt1, EncodeOpt3, EncodeOpt6,
@@ -75,11 +75,22 @@ func AllEncoders() []func(d *dhcpv4.DHCPv4, namespace string) (attribute.KeyValu
 }
 
 // EncodeFlags takes DHCP flags from a DHCP packet and returns an OTEL key/value pair.
-// See https://www.iana.org/assignments/bootp-dhcp-parameters/bootp-dhcp-parameters.xhtml
+// key/value pair. See https://datatracker.ietf.org/doc/html/rfc2131#page-9
 func EncodeFlags(d *dhcpv4.DHCPv4, namespace string) (attribute.KeyValue, error) {
 	key := fmt.Sprintf("%v.%v.Header.flags", keyNamespace, namespace)
 	if d != nil {
 		return attribute.String(key, d.FlagsToString()), nil
+	}
+
+	return attribute.KeyValue{}, &notFoundError{optName: key}
+}
+
+// EncodeTransactionID takes the Transaction ID header from a DHCP packet and returns an OTEL key/value pair.
+// See https://www.iana.org/assignments/bootp-dhcp-parameters/bootp-dhcp-parameters.xhtml
+func EncodeTransactionID(d *dhcpv4.DHCPv4, namespace string) (attribute.KeyValue, error) {
+	key := fmt.Sprintf("%v.%v.Header.transactionID", keyNamespace, namespace)
+	if d != nil {
+		return attribute.String(key, d.TransactionID.String()), nil
 	}
 
 	return attribute.KeyValue{}, &notFoundError{optName: key}

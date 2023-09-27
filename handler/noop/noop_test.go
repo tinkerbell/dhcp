@@ -2,11 +2,13 @@ package noop
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"os"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/tinkerbell/dhcp/data"
 	"github.com/tonglil/buflogr"
 )
 
@@ -15,7 +17,7 @@ func TestNoop_Handle(t *testing.T) {
 	n := &Handler{
 		Log: buflogr.NewWithBuffer(&buf),
 	}
-	n.Handle(nil, nil, nil)
+	n.Handle(context.TODO(), nil, data.Packet{})
 	want := "INFO no handler specified. please specify a handler\n"
 	if diff := cmp.Diff(buf.String(), want); diff != "" {
 		t.Fatalf(diff)
@@ -28,7 +30,7 @@ func TestNoop_HandleSTDOUT(t *testing.T) {
 	os.Stdout = w
 
 	n := &Handler{}
-	n.Handle(nil, nil, nil)
+	n.Handle(context.TODO(), nil, data.Packet{})
 
 	w.Close()
 	os.Stdout = old
@@ -36,7 +38,7 @@ func TestNoop_HandleSTDOUT(t *testing.T) {
 	var buf bytes.Buffer
 	io.Copy(&buf, r)
 
-	want := `noop.go:23: "level"=0 "msg"="no handler specified. please specify a handler"` + "\n"
+	want := `noop.go:24: "level"=0 "msg"="no handler specified. please specify a handler"` + "\n"
 	if diff := cmp.Diff(buf.String(), want); diff != "" {
 		t.Fatalf(diff)
 	}

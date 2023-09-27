@@ -22,6 +22,7 @@ import (
 	"github.com/tinkerbell/dhcp/data"
 	"github.com/tinkerbell/dhcp/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"golang.org/x/net/ipv4"
 	"golang.org/x/net/nettest"
 )
 
@@ -250,7 +251,15 @@ func TestHandle(t *testing.T) {
 			if tt.nilPeer {
 				peer = nil
 			}
-			s.Handle(conn, peer, tt.req)
+
+			con := ipv4.NewPacketConn(conn)
+			con.SetControlMessage(ipv4.FlagInterface, true)
+
+			n, err := net.InterfaceByName("lo")
+			if err != nil {
+				t.Fatal(err)
+			}
+			s.Handle(context.Background(), con, data.Packet{Peer: peer, Pkt: tt.req, Md: &data.Metadata{IfName: n.Name, IfIndex: n.Index}})
 
 			msg, err := client(pc)
 			if !errors.Is(err, tt.wantErr) {
@@ -476,7 +485,7 @@ func TestIsNetbootClient(t *testing.T) {
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			s := &Handler{Log: logr.Discard()}
-			if s.isNetbootClient(tt.input) != tt.want {
+			if err := s.isNetbootClient(tt.input); (err == nil) != tt.want {
 				t.Errorf("isNetbootClient() = %v, want %v", !tt.want, tt.want)
 			}
 		})
@@ -494,6 +503,7 @@ func TestEncodeToAttributes(t *testing.T) {
 			want: []attribute.KeyValue{
 				attribute.String("DHCP.testing.Header.file", "snp.efi"),
 				attribute.String("DHCP.testing.Header.flags", "Unicast"),
+				attribute.String("DHCP.testing.Header.transactionID", "0x00000000"),
 			},
 		},
 		"error": {},

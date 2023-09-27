@@ -25,6 +25,7 @@ func TestEncode(t *testing.T) {
 		"no encoders": {pkt: &dhcpv4.DHCPv4{}, want: nil},
 		"all encoders": {allEncoders: true, pkt: &dhcpv4.DHCPv4{BootFileName: "ipxe.efi", Flags: 0}, want: []attribute.KeyValue{
 			{Key: attribute.Key("DHCP.test.Header.flags"), Value: attribute.StringValue("Unicast")},
+			{Key: attribute.Key("DHCP.test.Header.transactionID"), Value: attribute.StringValue("0x00000000")},
 			{Key: attribute.Key("DHCP.test.Header.file"), Value: attribute.StringValue("ipxe.efi")},
 		}},
 	}
@@ -36,7 +37,7 @@ func TestEncode(t *testing.T) {
 				got = e.Encode(tt.pkt, "test", AllEncoders()...)
 			}
 			if diff := cmp.Diff(got, tt.want, cmpopts.IgnoreUnexported(attribute.Value{})); diff != "" {
-				t.Log(got)
+				t.Logf("%+v", got)
 				t.Fatal(diff)
 			}
 		})

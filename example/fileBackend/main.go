@@ -47,9 +47,17 @@ func main() {
 		OTELEnabled: true,
 		Backend:     backend,
 	}
-	listener := &dhcp.Listener{}
+	conn, err := dhcp.NewConn(netip.MustParseAddrPort("0.0.0.0:67"))
+	if err != nil {
+		panic(err)
+	}
+
+	defer func() {
+		_ = conn.Close()
+	}()
+	server := &dhcp.Server{Logger: l, Conn: conn, Handlers: []dhcp.Handler{h}}
 	l.Info("starting server", "addr", h.IPAddr)
-	l.Error(listener.ListenAndServe(ctx, h), "done")
+	l.Error(server.Serve(ctx), "done")
 	l.Info("done")
 }
 
