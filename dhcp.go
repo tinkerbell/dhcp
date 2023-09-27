@@ -44,6 +44,8 @@ func (s *Server) Serve(ctx context.Context) error {
 		_ = nConn.Close()
 	}()
 	for {
+		// Max UDP packet size is 65535. Max DHCPv4 packet size is 576. An ethernet frame is 1500 bytes.
+		// We use 4096 as a reasonable buffer size. dhcpv4.FromBytes will handle the rest.
 		rbuf := make([]byte, 4096)
 		n, cm, peer, err := nConn.ReadFrom(rbuf)
 		if err != nil {
