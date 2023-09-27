@@ -2,130 +2,109 @@
 package dhcp
 
 import (
-	"fmt"
+	"context"
 	"net"
-	"net/netip"
 
+	"github.com/go-logr/logr"
+	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/insomniacslk/dhcp/dhcpv4/server4"
+	"github.com/tinkerbell/dhcp/data"
+	"golang.org/x/net/ipv4"
 )
 
-/*
-// ErrNoConn is an error im still not sure i want to use.
-var ErrNoConn = &noConnError{}
-
-type noConnError struct{}
-
-func (e *noConnError) Error() string {
-	return "no connection specified"
+// Handler is a type that defines the handler function to be called every time a
+// valid DHCPv4 message is received
+// type Handler func(ctx context.Context, conn net.PacketConn, d data.Packet).
+type Handler interface {
+	Handle(ctx context.Context, conn *ipv4.PacketConn, d data.Packet)
 }
 
-
-
-// Listener is a DHCPv4 server.
-type Listener struct {
-	Addr     netip.AddrPort
-	Log      logr.Logger
-	srv      *Server
-	handlers []Handler
+// Server represents a DHCPv4 server object.
+type Server struct {
+	Conn     net.PacketConn
+	Handlers []Handler
+	Logger   logr.Logger
 }
 
-// Handler is the interface is responsible for responding to DHCP messages.
-//type Handler interface {
-// Handle is used for how to respond to DHCP messages.
-//	Handle(net.PacketConn, net.Addr, *dhcpv4.DHCPv4)
-//}
-
-// Handler is the main handler passed to the server4 function.
-// Internally it allows for multiple handlers to be defined.
-// Each handler in l.handlers then executed for every received packet.
-func (l *Listener) Handler(ctx context.Context, conn net.PacketConn, data data.Packet) {
-	for _, handle := range l.handlers {
-		handle(ctx, conn, data)
-	}
-}
-
-// Serve will listen for DHCP messages on the given net.PacketConn and call the handler for each.
-func Serve(ctx context.Context, c net.PacketConn, h ...Handler) error {
-	srv := &Listener{handlers: h}
-
-	return srv.Serve(ctx, c)
-}
-
-// Serve will listen for DHCP messages on the given net.PacketConn and call the handler in *Listener for each.
-// If no handler is specified, a Noop handler will be used.
-func (l *Listener) Serve(ctx context.Context, c net.PacketConn) error {
-	if len(l.handlers) == 0 {
-		nop := &noop.Handler{}
-		l.handlers = append(l.handlers, nop.Handle)
-	}
-	if c == nil {
-		return ErrNoConn
-	}
-	dhcp, err := NewServer("", nil, l.handlers, WithConn(c), WithLogger(l.Log))
-	if err != nil {
-		return fmt.Errorf("failed to create dhcpv4 server: %w", err)
-	}
-
-	errCh := make(chan error, 1)
+// Serve serves requests.
+func (s *Server) Serve(ctx context.Context) error {
 	go func() {
-		err = dhcp.Serve(ctx)
-		if err != nil {
-			errCh <- err
-		}
+		<-ctx.Done()
+		_ = s.Close()
 	}()
+	s.Logger.Info("Server listening on", "addr", s.Conn.LocalAddr())
 
-	select {
-	case <-ctx.Done():
-		return dhcp.Close()
-	case e := <-errCh:
-		return e
+	nConn := ipv4.NewPacketConn(s.Conn)
+	if err := nConn.SetControlMessage(ipv4.FlagInterface, true); err != nil {
+		s.Logger.Info("error setting control message", "err", err)
+		return err
+	}
+
+	defer func() {
+		_ = nConn.Close()
+	}()
+	for {
+		rbuf := make([]byte, 4096)
+		n, cm, peer, err := nConn.ReadFrom(rbuf)
+		if err != nil {
+			select {
+			case <-ctx.Done():
+				return nil
+			default:
+			}
+			s.Logger.Info("error reading from packet conn", "err", err)
+			return err
+		}
+
+		m, err := dhcpv4.FromBytes(rbuf[:n])
+		if err != nil {
+			s.Logger.Info("error parsing DHCPv4 request", "err", err)
+			continue
+		}
+
+		upeer, ok := peer.(*net.UDPAddr)
+		if !ok {
+			s.Logger.Info("not a UDP connection? Peer is", "peer", peer)
+			continue
+		}
+		// Set peer to broadcast if the client did not have an IP.
+		if upeer.IP == nil || upeer.IP.To4().Equal(net.IPv4zero) {
+			upeer = &net.UDPAddr{
+				IP:   net.IPv4bcast,
+				Port: upeer.Port,
+			}
+		}
+
+		var ifName string
+		if n, err := net.InterfaceByIndex(cm.IfIndex); err == nil {
+			ifName = n.Name
+		}
+
+		for _, handler := range s.Handlers {
+			go handler.Handle(ctx, nConn, data.Packet{Peer: upeer, Pkt: m, Md: &data.Metadata{IfName: ifName, IfIndex: cm.IfIndex}})
+		}
 	}
 }
 
-// ListenAndServe will listen for DHCP messages and call the given handler for each.
-func (l *Listener) ListenAndServe(ctx context.Context, h ...Handler) error {
-	if len(h) == 0 {
-		nop := &noop.Handler{}
-		l.handlers = append(l.handlers, nop.Handle)
-	}
-	l.handlers = h
-	defaults := &Listener{
-		Addr: netip.MustParseAddrPort("0.0.0.0:67"),
-	}
-	if err := mergo.Merge(l, defaults); err != nil {
-		return fmt.Errorf("failed to merge defaults: %w", err)
-	}
-
-	addr := &net.UDPAddr{
-		IP:   l.Addr.Addr().AsSlice(),
-		Port: int(l.Addr.Port()),
-		//IP:   defaults.Addr.Addr().AsSlice(),
-		//Port: int(defaults.Addr.Port()),
-	}
-	conn, err := server4.NewIPv4UDPConn("", addr)
-	if err != nil {
-		return fmt.Errorf("failed to create udp connection: %w", err)
-	}
-
-	return l.Serve(ctx, conn)
+// Close sends a termination request to the server, and closes the UDP listener.
+func (s *Server) Close() error {
+	return s.Conn.Close()
 }
 
-// Shutdown closes the listener.
-func (l *Listener) Shutdown() error {
-	if l.srv == nil {
-		return errors.New("no server to shutdown")
+// NewServer initializes and returns a new Server object.
+func NewServer(ifname string, addr *net.UDPAddr, handler ...Handler) (*Server, error) {
+	s := &Server{
+		Handlers: handler,
+		Logger:   logr.Discard(),
 	}
 
-	return l.srv.Close()
-}
-*/
-
-// NewConn creates a new UDP connection.
-func NewConn(addr netip.AddrPort) (net.PacketConn, error) {
-	conn, err := server4.NewIPv4UDPConn("", &net.UDPAddr{IP: addr.Addr().AsSlice(), Port: int(addr.Port())})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create udp connection: %w", err)
+	if s.Conn == nil {
+		var err error
+		conn, err := server4.NewIPv4UDPConn(ifname, addr)
+		if err != nil {
+			return nil, err
+		}
+		s.Conn = conn
 	}
-
-	return conn, nil
+	return s, nil
 }
