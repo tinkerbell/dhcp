@@ -7,8 +7,27 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/insomniacslk/dhcp/dhcpv4"
 	"go.opentelemetry.io/otel/attribute"
 )
+
+// Packet holds the data that is passed to a DHCP handler.
+type Packet struct {
+	// Peer is the address of the client that sent the DHCP message.
+	Peer net.Addr
+	// Pkt is the DHCP message.
+	Pkt *dhcpv4.DHCPv4
+	// Md is the metadata that was passed to the DHCP server.
+	Md *Metadata
+}
+
+// Metadata holds metadata about the DHCP packet that was received.
+type Metadata struct {
+	// IfName is the name of the interface that the DHCP message was received on.
+	IfName string
+	// IfIndex is the index of the interface that the DHCP message was received on.
+	IfIndex int
+}
 
 // DHCP holds the DHCP headers and options to be set in a DHCP handler response.
 // This is the API between a DHCP handler and a backend.

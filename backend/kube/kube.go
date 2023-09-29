@@ -82,7 +82,7 @@ func (b *Backend) GetByMac(ctx context.Context, mac net.HardwareAddr) (*data.DHC
 	}
 
 	if len(hardwareList.Items) == 0 {
-		err := errors.New("no hardware found")
+		err := hardwareNotFoundError{}
 		span.SetStatus(codes.Error, err.Error())
 
 		return nil, nil, err
@@ -139,7 +139,7 @@ func (b *Backend) GetByIP(ctx context.Context, ip net.IP) (*data.DHCP, *data.Net
 	}
 
 	if len(hardwareList.Items) == 0 {
-		err := errors.New("no hardware found")
+		err := hardwareNotFoundError{}
 		span.SetStatus(codes.Error, err.Error())
 
 		return nil, nil, err

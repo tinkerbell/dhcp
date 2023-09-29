@@ -22,20 +22,30 @@ import (
 	"github.com/tinkerbell/dhcp/data"
 	"github.com/tinkerbell/dhcp/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"golang.org/x/net/ipv4"
 	"golang.org/x/net/nettest"
 )
 
 var errBadBackend = fmt.Errorf("bad backend")
 
 type mockBackend struct {
-	err          error
-	allowNetboot bool
-	ipxeScript   *url.URL
+	err              error
+	allowNetboot     bool
+	ipxeScript       *url.URL
+	hardwareNotFound bool
 }
+
+type hwNotFoundError struct{}
+
+func (hwNotFoundError) NotFound() bool { return true }
+func (hwNotFoundError) Error() string  { return "not found" }
 
 func (m *mockBackend) GetByMac(context.Context, net.HardwareAddr) (*data.DHCP, *data.Netboot, error) {
 	if m.err != nil {
 		return nil, nil, m.err
+	}
+	if m.hardwareNotFound {
+		return nil, nil, hwNotFoundError{}
 	}
 	d := &data.DHCP{
 		MACAddress:     []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06},
@@ -60,10 +70,14 @@ func (m *mockBackend) GetByMac(context.Context, net.HardwareAddr) (*data.DHCP, *
 		AllowNetboot:  m.allowNetboot,
 		IPXEScriptURL: m.ipxeScript,
 	}
+
 	return d, n, m.err
 }
 
 func (m *mockBackend) GetByIP(context.Context, net.IP) (*data.DHCP, *data.Netboot, error) {
+	if m.hardwareNotFound {
+		return nil, nil, hwNotFoundError{}
+	}
 	return nil, nil, errors.New("not implemented")
 }
 
@@ -75,16 +89,25 @@ func TestHandle(t *testing.T) {
 		wantErr error
 		nilPeer bool
 	}{
-		"success discover message type": {
+		"success discover message type with netboot options": {
 			server: Handler{
-				Backend: &mockBackend{},
+				Backend: &mockBackend{
+					allowNetboot: true,
+					ipxeScript:   &url.URL{Scheme: "http", Host: "localhost:8181", Path: "auto.ipxe"},
+				},
 				IPAddr:  netip.MustParseAddr("127.0.0.1"),
+				Netboot: Netboot{Enabled: true},
 			},
 			req: &dhcpv4.DHCPv4{
 				OpCode:       dhcpv4.OpcodeBootRequest,
 				ClientHWAddr: []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06},
 				Options: dhcpv4.OptionsFromList(
 					dhcpv4.OptMessageType(dhcpv4.MessageTypeDiscover),
+					dhcpv4.OptUserClass("Tinkerbell"),
+					dhcpv4.OptClassIdentifier("HTTPClient:Arch:xxxxx:UNDI:yyyzzz"),
+					dhcpv4.OptClientArch(iana.EFI_X86_64_HTTP),
+					dhcpv4.OptGeneric(dhcpv4.OptionClientNetworkInterfaceIdentifier, []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}),
+					dhcpv4.OptGeneric(dhcpv4.OptionClientMachineIdentifier, []byte{0x00, 0x02, 0x03, 0x04, 0x05, 0x06, 0x00, 0x02, 0x03, 0x04, 0x05, 0x06, 0x00, 0x02, 0x03, 0x04, 0x05}),
 				),
 			},
 			want: &dhcpv4.DHCPv4{
@@ -92,8 +115,9 @@ func TestHandle(t *testing.T) {
 				ClientHWAddr:  []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06},
 				ClientIPAddr:  []byte{0, 0, 0, 0},
 				YourIPAddr:    []byte{192, 168, 1, 100},
-				ServerIPAddr:  []byte{127, 0, 0, 1},
+				ServerIPAddr:  []byte{0, 0, 0, 0},
 				GatewayIPAddr: []byte{0, 0, 0, 0},
+				BootFileName:  "http://localhost:8181/auto.ipxe",
 				Options: dhcpv4.OptionsFromList(
 					dhcpv4.OptMessageType(dhcpv4.MessageTypeOffer),
 					dhcpv4.OptServerIdentifier(net.IP{127, 0, 0, 1}),
@@ -106,6 +130,11 @@ func TestHandle(t *testing.T) {
 					dhcpv4.OptBroadcastAddress(net.IP{192, 168, 1, 255}),
 					dhcpv4.OptNTPServers([]net.IP{{132, 163, 96, 2}}...),
 					dhcpv4.OptDomainSearch(&rfc1035label.Labels{Labels: []string{"mydomain.com"}}),
+					dhcpv4.OptClassIdentifier("HTTPClient"),
+					dhcpv4.OptGeneric(dhcpv4.OptionVendorSpecificInformation, dhcpv4.Options{
+						6:  []byte{8},
+						69: otel.TraceparentFromContext(context.Background()),
+					}.ToBytes()),
 				),
 			},
 		},
@@ -123,9 +152,13 @@ func TestHandle(t *testing.T) {
 			},
 			wantErr: errBadBackend,
 		},
-		"success request message type": {
+		"success request message type with netboot options": {
 			server: Handler{
-				Backend: &mockBackend{},
+				Backend: &mockBackend{
+					allowNetboot: true,
+					ipxeScript:   &url.URL{Scheme: "http", Host: "localhost:8181", Path: "auto.ipxe"},
+				},
+				Netboot: Netboot{Enabled: true},
 				IPAddr:  netip.MustParseAddr("127.0.0.1"),
 			},
 			req: &dhcpv4.DHCPv4{
@@ -147,6 +180,11 @@ func TestHandle(t *testing.T) {
 					dhcpv4.OptBroadcastAddress(net.IP{192, 168, 1, 255}),
 					dhcpv4.OptNTPServers([]net.IP{{132, 163, 96, 2}}...),
 					dhcpv4.OptDomainSearch(&rfc1035label.Labels{Labels: []string{"mydomain.com"}}),
+					dhcpv4.OptUserClass("Tinkerbell"),
+					dhcpv4.OptClassIdentifier("HTTPClient:Arch:xxxxx:UNDI:yyyzzz"),
+					dhcpv4.OptClientArch(iana.EFI_X86_64_HTTP),
+					dhcpv4.OptGeneric(dhcpv4.OptionClientNetworkInterfaceIdentifier, []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}),
+					dhcpv4.OptGeneric(dhcpv4.OptionClientMachineIdentifier, []byte{0x00, 0x02, 0x03, 0x04, 0x05, 0x06, 0x00, 0x02, 0x03, 0x04, 0x05, 0x06, 0x00, 0x02, 0x03, 0x04, 0x05}),
 				),
 			},
 			want: &dhcpv4.DHCPv4{
@@ -154,8 +192,9 @@ func TestHandle(t *testing.T) {
 				ClientHWAddr:  []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06},
 				ClientIPAddr:  []byte{0, 0, 0, 0},
 				YourIPAddr:    []byte{192, 168, 1, 100},
-				ServerIPAddr:  []byte{127, 0, 0, 1},
+				ServerIPAddr:  []byte{0, 0, 0, 0},
 				GatewayIPAddr: []byte{0, 0, 0, 0},
+				BootFileName:  "http://localhost:8181/auto.ipxe",
 				Options: dhcpv4.OptionsFromList(
 					dhcpv4.OptMessageType(dhcpv4.MessageTypeAck),
 					dhcpv4.OptServerIdentifier(net.IP{127, 0, 0, 1}),
@@ -168,6 +207,11 @@ func TestHandle(t *testing.T) {
 					dhcpv4.OptBroadcastAddress(net.IP{192, 168, 1, 255}),
 					dhcpv4.OptNTPServers([]net.IP{{132, 163, 96, 2}}...),
 					dhcpv4.OptDomainSearch(&rfc1035label.Labels{Labels: []string{"mydomain.com"}}),
+					dhcpv4.OptClassIdentifier("HTTPClient"),
+					dhcpv4.OptGeneric(dhcpv4.OptionVendorSpecificInformation, dhcpv4.Options{
+						6:  []byte{8},
+						69: otel.TraceparentFromContext(context.Background()),
+					}.ToBytes()),
 				),
 			},
 		},
@@ -231,6 +275,40 @@ func TestHandle(t *testing.T) {
 			want:    nil,
 			wantErr: errBadBackend,
 		},
+		/*"nil incoming packet": {
+			want:    nil,
+			wantErr: errBadBackend,
+		},*/
+		"failure no hardware found discover": {
+			server: Handler{
+				Backend: &mockBackend{hardwareNotFound: true},
+				IPAddr:  netip.MustParseAddr("127.0.0.1"),
+			},
+			req: &dhcpv4.DHCPv4{
+				OpCode:       dhcpv4.OpcodeBootRequest,
+				ClientHWAddr: []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06},
+				Options: dhcpv4.OptionsFromList(
+					dhcpv4.OptMessageType(dhcpv4.MessageTypeDiscover),
+				),
+			},
+			want:    nil,
+			wantErr: errBadBackend,
+		},
+		"failure no hardware found request": {
+			server: Handler{
+				Backend: &mockBackend{hardwareNotFound: true},
+				IPAddr:  netip.MustParseAddr("127.0.0.1"),
+			},
+			req: &dhcpv4.DHCPv4{
+				OpCode:       dhcpv4.OpcodeBootRequest,
+				ClientHWAddr: []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06},
+				Options: dhcpv4.OptionsFromList(
+					dhcpv4.OptMessageType(dhcpv4.MessageTypeRequest),
+				),
+			},
+			want:    nil,
+			wantErr: errBadBackend,
+		},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -250,14 +328,22 @@ func TestHandle(t *testing.T) {
 			if tt.nilPeer {
 				peer = nil
 			}
-			s.Handle(conn, peer, tt.req)
+
+			con := ipv4.NewPacketConn(conn)
+			con.SetControlMessage(ipv4.FlagInterface, true)
+
+			n, err := net.InterfaceByName("lo")
+			if err != nil {
+				t.Fatal(err)
+			}
+			s.Handle(context.Background(), con, data.Packet{Peer: peer, Pkt: tt.req, Md: &data.Metadata{IfName: n.Name, IfIndex: n.Index}})
 
 			msg, err := client(pc)
 			if !errors.Is(err, tt.wantErr) {
 				t.Fatalf("client() error = %v, wantErr %v", err, tt.wantErr)
 			}
 
-			if diff := cmp.Diff(tt.want, msg, cmpopts.IgnoreUnexported(dhcpv4.DHCPv4{})); diff != "" {
+			if diff := cmp.Diff(msg, tt.want, cmpopts.IgnoreUnexported(dhcpv4.DHCPv4{})); diff != "" {
 				t.Fatal("diff", diff)
 			}
 		})
@@ -434,50 +520,50 @@ func TestReadBackend(t *testing.T) {
 func TestIsNetbootClient(t *testing.T) {
 	tests := map[string]struct {
 		input *dhcpv4.DHCPv4
-		want  bool
+		want  error
 	}{
-		"fail invalid message type": {input: &dhcpv4.DHCPv4{Options: dhcpv4.OptionsFromList(dhcpv4.OptMessageType(dhcpv4.MessageTypeInform))}, want: false},
-		"fail no opt60":             {input: &dhcpv4.DHCPv4{Options: dhcpv4.OptionsFromList(dhcpv4.OptMessageType(dhcpv4.MessageTypeDiscover))}, want: false},
+		"fail invalid message type": {input: &dhcpv4.DHCPv4{Options: dhcpv4.OptionsFromList(dhcpv4.OptMessageType(dhcpv4.MessageTypeInform))}, want: errors.New("")},
+		"fail no opt60":             {input: &dhcpv4.DHCPv4{Options: dhcpv4.OptionsFromList(dhcpv4.OptMessageType(dhcpv4.MessageTypeDiscover))}, want: errors.New("")},
 		"fail bad opt60": {input: &dhcpv4.DHCPv4{Options: dhcpv4.OptionsFromList(
 			dhcpv4.OptMessageType(dhcpv4.MessageTypeDiscover),
 			dhcpv4.OptClassIdentifier("BadClient"),
-		)}, want: false},
+		)}, want: errors.New("")},
 		"fail no opt93": {input: &dhcpv4.DHCPv4{Options: dhcpv4.OptionsFromList(
 			dhcpv4.OptMessageType(dhcpv4.MessageTypeDiscover),
 			dhcpv4.OptClassIdentifier("HTTPClient:Arch:xxxxx:UNDI:yyyzzz"),
-		)}, want: false},
+		)}, want: errors.New("")},
 		"fail no opt94": {input: &dhcpv4.DHCPv4{Options: dhcpv4.OptionsFromList(
 			dhcpv4.OptMessageType(dhcpv4.MessageTypeDiscover),
 			dhcpv4.OptClassIdentifier("HTTPClient:Arch:xxxxx:UNDI:yyyzzz"),
 			dhcpv4.OptClientArch(iana.EFI_ARM64_HTTP),
-		)}, want: false},
+		)}, want: errors.New("")},
 		"fail invalid opt97[0] != 0": {input: &dhcpv4.DHCPv4{Options: dhcpv4.OptionsFromList(
 			dhcpv4.OptMessageType(dhcpv4.MessageTypeDiscover),
 			dhcpv4.OptClassIdentifier("HTTPClient:Arch:xxxxx:UNDI:yyyzzz"),
 			dhcpv4.OptClientArch(iana.EFI_ARM64_HTTP),
 			dhcpv4.OptGeneric(dhcpv4.OptionClientNetworkInterfaceIdentifier, []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}),
 			dhcpv4.OptGeneric(dhcpv4.OptionClientMachineIdentifier, []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x00, 0x02, 0x03, 0x04, 0x05, 0x06, 0x00, 0x02, 0x03, 0x04, 0x05}),
-		)}, want: false},
+		)}, want: errors.New("")},
 		"fail invalid len(opt97)": {input: &dhcpv4.DHCPv4{Options: dhcpv4.OptionsFromList(
 			dhcpv4.OptMessageType(dhcpv4.MessageTypeDiscover),
 			dhcpv4.OptClassIdentifier("HTTPClient:Arch:xxxxx:UNDI:yyyzzz"),
 			dhcpv4.OptClientArch(iana.EFI_ARM64_HTTP),
 			dhcpv4.OptGeneric(dhcpv4.OptionClientNetworkInterfaceIdentifier, []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}),
 			dhcpv4.OptGeneric(dhcpv4.OptionClientMachineIdentifier, []byte{0x01, 0x02}),
-		)}, want: false},
+		)}, want: errors.New("")},
 		"success len(opt97) == 0": {input: &dhcpv4.DHCPv4{Options: dhcpv4.OptionsFromList(
 			dhcpv4.OptMessageType(dhcpv4.MessageTypeDiscover),
 			dhcpv4.OptClassIdentifier("HTTPClient:Arch:xxxxx:UNDI:yyyzzz"),
 			dhcpv4.OptClientArch(iana.EFI_ARM64_HTTP),
 			dhcpv4.OptGeneric(dhcpv4.OptionClientNetworkInterfaceIdentifier, []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}),
 			dhcpv4.OptGeneric(dhcpv4.OptionClientMachineIdentifier, []byte{}),
-		)}, want: true},
+		)}, want: nil},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
 			s := &Handler{Log: logr.Discard()}
-			if s.isNetbootClient(tt.input) != tt.want {
-				t.Errorf("isNetbootClient() = %v, want %v", !tt.want, tt.want)
+			if err := s.isNetbootClient(tt.input); (err == nil) != (tt.want == nil) {
+				t.Errorf("isNetbootClient() = %v, want %v", err, tt.want)
 			}
 		})
 	}
@@ -494,6 +580,7 @@ func TestEncodeToAttributes(t *testing.T) {
 			want: []attribute.KeyValue{
 				attribute.String("DHCP.testing.Header.file", "snp.efi"),
 				attribute.String("DHCP.testing.Header.flags", "Unicast"),
+				attribute.String("DHCP.testing.Header.transactionID", "0x00000000"),
 			},
 		},
 		"error": {},

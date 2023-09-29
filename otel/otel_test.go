@@ -25,6 +25,7 @@ func TestEncode(t *testing.T) {
 		"no encoders": {pkt: &dhcpv4.DHCPv4{}, want: nil},
 		"all encoders": {allEncoders: true, pkt: &dhcpv4.DHCPv4{BootFileName: "ipxe.efi", Flags: 0}, want: []attribute.KeyValue{
 			{Key: attribute.Key("DHCP.test.Header.flags"), Value: attribute.StringValue("Unicast")},
+			{Key: attribute.Key("DHCP.test.Header.transactionID"), Value: attribute.StringValue("0x00000000")},
 			{Key: attribute.Key("DHCP.test.Header.file"), Value: attribute.StringValue("ipxe.efi")},
 		}},
 	}
@@ -36,7 +37,7 @@ func TestEncode(t *testing.T) {
 				got = e.Encode(tt.pkt, "test", AllEncoders()...)
 			}
 			if diff := cmp.Diff(got, tt.want, cmpopts.IgnoreUnexported(attribute.Value{})); diff != "" {
-				t.Log(got)
+				t.Logf("%+v", got)
 				t.Fatal(diff)
 			}
 		})
@@ -486,6 +487,31 @@ func TestSetHeaderFlags(t *testing.T) {
 			got, err := EncodeFlags(tt.input, "testing")
 			if tt.wantErr != nil && !OptNotFound(err) {
 				t.Fatalf("setHeaderFlags() error (type: %T) = %[1]v, wantErr (type: %T) %[2]v", err, tt.wantErr)
+			}
+			if diff := cmp.Diff(got, tt.want, cmpopts.IgnoreUnexported(attribute.Value{})); diff != "" {
+				t.Fatal(diff)
+			}
+		})
+	}
+}
+
+func TestSetHeaderTransactionID(t *testing.T) {
+	tests := map[string]struct {
+		input   *dhcpv4.DHCPv4
+		want    attribute.KeyValue
+		wantErr error
+	}{
+		"success": {
+			input: &dhcpv4.DHCPv4{TransactionID: dhcpv4.TransactionID{0x00, 0x00, 0x00, 0x00}},
+			want:  attribute.String("DHCP.testing.Header.transactionID", "0x00000000"),
+		},
+		"error": {wantErr: &notFoundError{}},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			got, err := EncodeTransactionID(tt.input, "testing")
+			if tt.wantErr != nil && !OptNotFound(err) {
+				t.Fatalf("EncodeTransactionID() error (type: %T) = %[1]v, wantErr (type: %T) %[2]v", err, tt.wantErr)
 			}
 			if diff := cmp.Diff(got, tt.want, cmpopts.IgnoreUnexported(attribute.Value{})); diff != "" {
 				t.Fatal(diff)

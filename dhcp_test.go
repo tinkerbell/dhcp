@@ -2,17 +2,15 @@ package dhcp
 
 import (
 	"context"
-	"errors"
 	"net"
 	"net/netip"
 	"testing"
-	"time"
 
 	"github.com/go-logr/logr"
-	"github.com/google/go-cmp/cmp"
 	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/insomniacslk/dhcp/dhcpv4/nclient4"
-	"github.com/tinkerbell/dhcp/handler/noop"
+	"github.com/tinkerbell/dhcp/data"
+	"golang.org/x/net/ipv4"
 	"golang.org/x/net/nettest"
 )
 
@@ -26,13 +24,13 @@ type mock struct {
 	Router      net.IP
 }
 
-func (m *mock) Handle(conn net.PacketConn, peer net.Addr, pkt *dhcpv4.DHCPv4) {
+func (m *mock) Handle(_ context.Context, conn *ipv4.PacketConn, d data.Packet) {
 	if m.Log.GetSink() == nil {
 		m.Log = logr.Discard()
 	}
 
 	mods := m.setOpts()
-	switch mt := pkt.MessageType(); mt {
+	switch mt := d.Pkt.MessageType(); mt {
 	case dhcpv4.MessageTypeDiscover:
 		mods = append(mods, dhcpv4.WithMessageType(dhcpv4.MessageTypeOffer))
 	case dhcpv4.MessageTypeRequest:
@@ -43,12 +41,13 @@ func (m *mock) Handle(conn net.PacketConn, peer net.Addr, pkt *dhcpv4.DHCPv4) {
 		m.Log.Info("unsupported message type", "type", mt.String())
 		return
 	}
-	reply, err := dhcpv4.NewReplyFromRequest(pkt, mods...)
+	reply, err := dhcpv4.NewReplyFromRequest(d.Pkt, mods...)
 	if err != nil {
 		m.Log.Error(err, "error creating reply")
 		return
 	}
-	if _, err := conn.WriteTo(reply.ToBytes(), peer); err != nil {
+	cm := &ipv4.ControlMessage{IfIndex: d.Md.IfIndex}
+	if _, err := conn.WriteTo(reply.ToBytes(), cm, d.Peer); err != nil {
 		m.Log.Error(err, "failed to send reply")
 		return
 	}
@@ -86,26 +85,23 @@ func dhcp(ctx context.Context) (*dhcpv4.DHCPv4, error) {
 	return c.DiscoverOffer(ctx)
 }
 
-func TestListenAndServe(t *testing.T) {
-	// test if the server is listening on the correct address and port
+func TestServe(t *testing.T) {
 	tests := map[string]struct {
-		h            Handler
-		addr         netip.AddrPort
-		wantListener *Listener
+		h    Handler
+		addr netip.AddrPort
 	}{
 		"success": {addr: netip.MustParseAddrPort("127.0.0.1:7676"), h: &mock{}},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
-			s := &Listener{Addr: tt.addr}
-			t.Logf("before: %+v", s)
+			s, err := NewServer("lo", net.UDPAddrFromAddrPort(tt.addr), tt.h)
+			if err != nil {
+				t.Fatal(err)
+			}
 			ctx, done := context.WithCancel(context.Background())
 			defer done()
-			go func() {
-				<-ctx.Done()
-			}()
 
-			go s.ListenAndServe(ctx, tt.h)
+			go s.Serve(ctx)
 
 			// make client calls
 			d, err := dhcp(ctx)
@@ -116,70 +112,5 @@ func TestListenAndServe(t *testing.T) {
 
 			done()
 		})
-	}
-}
-
-func TestListenerAndServe(t *testing.T) {
-	tests := map[string]struct {
-		h    Handler
-		addr netip.AddrPort
-		err  error
-	}{
-		"noop handler":             {h: &noop.Handler{}, addr: netip.MustParseAddrPort("0.0.0.0:7678")},
-		"no handler":               {addr: netip.MustParseAddrPort("0.0.0.0:7678")},
-		"mock handler":             {h: &mock{}, addr: netip.MustParseAddrPort("0.0.0.0:7678")},
-		"success use default addr": {h: &mock{}},
-	}
-	for name, tt := range tests {
-		t.Run(name, func(t *testing.T) {
-			s := &Listener{
-				Addr: tt.addr,
-			}
-			ctx, done := context.WithTimeout(context.Background(), time.Millisecond*100)
-			defer done()
-
-			err := s.ListenAndServe(ctx, tt.h)
-			if err != tt.err && err.Error() != "failed to create udp connection: cannot bind to port 67: permission denied" && !errors.Is(err, ErrNoConn) { //nolint:errorlint // nil pointer dereference without this.
-				t.Log(err)
-				t.Fatalf("got: %T, wanted: %T or ErrNoConn", err, &net.OpError{})
-			}
-		})
-	}
-}
-
-func TestServe(t *testing.T) {
-	tests := map[string]struct {
-		h    Handler
-		addr netip.AddrPort
-		err  error
-	}{
-		"noop handler": {addr: netip.MustParseAddrPort("0.0.0.0:7676"), h: &noop.Handler{}},
-		"no handler":   {addr: netip.MustParseAddrPort("0.0.0.0:7678")},
-	}
-	for name, tt := range tests {
-		t.Run(name, func(t *testing.T) {
-			ctx, done := context.WithTimeout(context.Background(), time.Millisecond*100)
-			defer done()
-			go func() {
-				<-ctx.Done()
-			}()
-
-			err := Serve(ctx, nil, tt.h)
-			switch err.(type) {
-			case *net.OpError:
-			default:
-				if !errors.Is(err, ErrNoConn) {
-					t.Fatalf("got: %T, wanted: %T or ErrNoConn", err, &net.OpError{})
-				}
-			}
-		})
-	}
-}
-
-func TestNoConnError(t *testing.T) {
-	want := "no connection specified"
-	got := ErrNoConn
-	if diff := cmp.Diff(got.Error(), want); diff != "" {
-		t.Fatal(diff)
 	}
 }

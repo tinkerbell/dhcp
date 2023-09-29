@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"log"
+	"net"
 	"net/netip"
 	"net/url"
 	"os"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/equinix-labs/otel-init-go/otelinit"
 	"github.com/go-logr/stdr"
+	"github.com/insomniacslk/dhcp/dhcpv4/server4"
 	"github.com/tinkerbell/dhcp"
 	"github.com/tinkerbell/dhcp/backend/kube"
 	"github.com/tinkerbell/dhcp/handler"
@@ -38,19 +40,26 @@ func main() {
 
 	h := &reservation.Handler{
 		Log:    l,
-		IPAddr: netip.MustParseAddr("192.168.2.221"),
+		IPAddr: netip.MustParseAddr("192.168.2.50"),
 		Netboot: reservation.Netboot{
-			IPXEBinServerTFTP: netip.MustParseAddrPort("192.168.1.34:69"),
-			IPXEBinServerHTTP: &url.URL{Scheme: "http", Host: "192.168.1.34:8080"},
-			IPXEScriptURL:     &url.URL{Scheme: "https", Host: "boot.netboot.xyz"},
+			IPXEBinServerTFTP: netip.MustParseAddrPort("192.168.2.50:69"),
+			IPXEBinServerHTTP: &url.URL{Scheme: "http", Host: "192.168.2.50:8080"},
+			IPXEScriptURL:     &url.URL{Scheme: "http", Host: "192.168.2.50", Path: "auto.ipxe"},
 			Enabled:           true,
 		},
 		OTELEnabled: true,
 		Backend:     backend,
 	}
-	listener := &dhcp.Listener{}
+	conn, err := server4.NewIPv4UDPConn("", net.UDPAddrFromAddrPort(netip.MustParseAddrPort("0.0.0.0:67")))
+	if err != nil {
+		panic(err)
+	}
+	defer func() {
+		_ = conn.Close()
+	}()
+	server := &dhcp.Server{Logger: l, Conn: conn, Handlers: []dhcp.Handler{h}}
 	l.Info("starting server", "addr", h.IPAddr)
-	l.Error(listener.ListenAndServe(ctx, h), "done")
+	l.Error(server.Serve(ctx), "done")
 	l.Info("done")
 }
 

@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"log"
+	"net"
 	"net/netip"
 	"net/url"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"github.com/equinix-labs/otel-init-go/otelinit"
 	"github.com/go-logr/logr"
 	"github.com/go-logr/stdr"
+	"github.com/insomniacslk/dhcp/dhcpv4/server4"
 	"github.com/tinkerbell/dhcp"
 	"github.com/tinkerbell/dhcp/backend/file"
 	"github.com/tinkerbell/dhcp/handler"
@@ -47,9 +49,17 @@ func main() {
 		OTELEnabled: true,
 		Backend:     backend,
 	}
-	listener := &dhcp.Listener{}
+	conn, err := server4.NewIPv4UDPConn("", net.UDPAddrFromAddrPort(netip.MustParseAddrPort("0.0.0.0:67")))
+	if err != nil {
+		panic(err)
+	}
+
+	defer func() {
+		_ = conn.Close()
+	}()
+	server := &dhcp.Server{Logger: l, Conn: conn, Handlers: []dhcp.Handler{h}}
 	l.Info("starting server", "addr", h.IPAddr)
-	l.Error(listener.ListenAndServe(ctx, h), "done")
+	l.Error(server.Serve(ctx), "done")
 	l.Info("done")
 }
 
