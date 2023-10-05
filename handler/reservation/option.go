@@ -178,13 +178,13 @@ func (h *Handler) bootfileAndNextServer(ctx context.Context, uClass UserClass, o
 			bootfile = iscript.String()
 		}
 	case clientType(opt60) == httpClient: // Check the client type from option 60.
-		bootfile = fmt.Sprintf("%s/%s", ipxe, bin)
-		ns := net.ParseIP(ipxe.Host)
-		if ns == nil {
-			h.Log.Error(fmt.Errorf("unable to parse ipxe host"), "ipxe", ipxe.Host)
-			ns = net.ParseIP("0.0.0.0")
+		bootfile = ipxe.JoinPath(bin).String()
+		nextServer = net.ParseIP("0.0.0.0")
+		if n, err := netip.ParseAddrPort(ipxe.Host); err == nil {
+			nextServer = n.Addr().AsSlice()
+		} else if n2 := net.ParseIP(ipxe.Host); n2 != nil {
+			nextServer = net.ParseIP(ipxe.Host)
 		}
-		nextServer = ns
 	case uClass == IPXE: // if the "iPXE" user class is found it means we aren't in our custom version of ipxe, but because of the option 43 we're setting we need to give a full tftp url from which to boot.
 		bootfile = fmt.Sprintf("tftp://%v/%v", tftp.String(), bin)
 		nextServer = net.IP(tftp.Addr().AsSlice())
