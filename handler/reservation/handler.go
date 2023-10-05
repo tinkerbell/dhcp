@@ -86,10 +86,7 @@ func (h *Handler) Handle(ctx context.Context, conn *ipv4.PacketConn, p data.Pack
 		}
 		log.Info("received DHCP packet", "type", p.Pkt.MessageType().String())
 		reply = h.updateMsg(ctx, p.Pkt, d, n, dhcpv4.MessageTypeOffer)
-		if bf := reply.BootFileName; bf != "" {
-			log = log.WithValues("bootFileName", bf)
-		}
-		log = log.WithValues("type", dhcpv4.MessageTypeOffer.String(), "ipAddress", d.IPAddress.String())
+		log = log.WithValues("type", dhcpv4.MessageTypeOffer.String())
 	case dhcpv4.MessageTypeRequest:
 		d, n, err := h.readBackend(ctx, p.Pkt.ClientHWAddr)
 		if err != nil {
@@ -104,10 +101,7 @@ func (h *Handler) Handle(ctx context.Context, conn *ipv4.PacketConn, p data.Pack
 		}
 		log.Info("received DHCP packet", "type", p.Pkt.MessageType().String())
 		reply = h.updateMsg(ctx, p.Pkt, d, n, dhcpv4.MessageTypeAck)
-		if bf := reply.BootFileName; bf != "" {
-			log = log.WithValues("bootFileName", bf)
-		}
-		log = log.WithValues("type", dhcpv4.MessageTypeAck.String(), "ipAddress", d.IPAddress.String())
+		log = log.WithValues("type", dhcpv4.MessageTypeAck.String())
 	case dhcpv4.MessageTypeRelease:
 		// Since the design of this DHCP server is that all IP addresses are
 		// Host reservations, when a client releases an address, the server
@@ -124,6 +118,13 @@ func (h *Handler) Handle(ctx context.Context, conn *ipv4.PacketConn, p data.Pack
 		return
 	}
 
+	if bf := reply.BootFileName; bf != "" {
+		log = log.WithValues("bootFileName", bf)
+	}
+	if ns := reply.ServerIPAddr; ns != nil {
+		log = log.WithValues("nextServer", ns.String())
+	}
+	log = log.WithValues("ipAddress", reply.YourIPAddr.String())
 	cm := &ipv4.ControlMessage{}
 	if p.Md != nil {
 		cm.IfIndex = p.Md.IfIndex
