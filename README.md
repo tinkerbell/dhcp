@@ -5,13 +5,10 @@
 
 # dhcp
 
-DHCP library and CLI server with multiple backends. All IP addresses are served as DHCP reservations. There are no leases.
+DHCP library and CLI server with multiple backends. All IP addresses are served as DHCP reservations. There are no lease pools as are normally found in DHCP servers.
 
 ## Backends
 
-- [Tink gRPC server](https://github.com/tinkerbell/tink/tree/main/cmd/tink-server)
-  - This backend is the main use case.
-  It pulls hardware data from the Tink gRPC API for use in serving DHCP clients.
 - [Tink Kubernetes CRDs](https://github.com/tinkerbell/tink/blob/main/config/crd/bases/tinkerbell.org_hardware.yaml)
   - This backend is also the main use case.
   It pulls hardware data from Kubernetes CRDs for use in serving DHCP clients.
@@ -19,10 +16,6 @@ DHCP library and CLI server with multiple backends. All IP addresses are served 
   - This backend is for mainly for testing and development.
   It reads a file for hardware data to use in serving DHCP clients.
   See [example.yaml](./backend/file/testdata/example.yaml) for the data model.
-- [Cacher server](https://github.com/packethost/cacher)
-  - This backend is mainly for backward compatibility in [Boots](https://github.com/tinkerbell/boots).
-  It pulls hardware data from the Cacher API for use in serving DHCP clients.
-  It is planned for deprecation in Boots.
 
 ## Definitions
 
