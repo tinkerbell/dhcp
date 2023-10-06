@@ -23,5 +23,5 @@ jobs:
       run: make test
     - name: generate coverage report
       run: make cover
-    - name: Codecov
-      uses: codecov/codecov-action@v3.1.4
+    - name: Upload coverage report (codcov.io)
+      run: bash <(curl -s https://codecov.io/bash)
