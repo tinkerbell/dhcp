@@ -124,7 +124,7 @@ func (h *Handler) Handle(ctx context.Context, conn *ipv4.PacketConn, p data.Pack
 	if ns := reply.ServerIPAddr; ns != nil {
 		log = log.WithValues("nextServer", ns.String())
 	}
-	log = log.WithValues("ipAddress", reply.YourIPAddr.String())
+	log = log.WithValues("ipAddress", reply.YourIPAddr.String(), "destination", p.Peer.String())
 	cm := &ipv4.ControlMessage{}
 	if p.Md != nil {
 		cm.IfIndex = p.Md.IfIndex
