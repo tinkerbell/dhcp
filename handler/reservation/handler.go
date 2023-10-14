@@ -107,12 +107,12 @@ func (h *Handler) Handle(ctx context.Context, conn *ipv4.PacketConn, p data.Pack
 		// Host reservations, when a client releases an address, the server
 		// doesn't have anything to do. This case is included for clarity of this
 		// design decision.
-		log.Info("received DHCP release packet, no response required, all IPs are host reservations")
+		log.Info("received DHCP release packet, no response required, all IPs are host reservations", "type", p.Pkt.MessageType().String())
 		span.SetStatus(codes.Ok, "received release, no response required")
 
 		return
 	default:
-		log.Info("received unknown message type")
+		log.Info("received unknown message type", "type", p.Pkt.MessageType().String())
 		span.SetStatus(codes.Error, "received unknown message type")
 
 		return
