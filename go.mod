@@ -4,7 +4,7 @@ go 1.20
 
 require (
 	github.com/equinix-labs/otel-init-go v0.0.9
-	github.com/fsnotify/fsnotify v1.6.0
+	github.com/fsnotify/fsnotify v1.7.0
 	github.com/ghodss/yaml v1.0.0
 	github.com/go-logr/logr v1.2.4
 	github.com/go-logr/stdr v1.2.2
