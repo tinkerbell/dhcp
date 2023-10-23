@@ -213,8 +213,10 @@ func toDHCPData(h *v1alpha1.DHCP) (*data.DHCP, error) {
 	}
 
 	// Gateway is optional, but should be a valid IP address if present
-	if d.DefaultGateway, err = netip.ParseAddr(h.IP.Gateway); err != nil {
-		return nil, err
+	if h.IP.Gateway != "" {
+		if d.DefaultGateway, err = netip.ParseAddr(h.IP.Gateway); err != nil {
+			return nil, err
+		}
 	}
 
 	// name servers, optional
