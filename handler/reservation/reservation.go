@@ -6,6 +6,7 @@ import (
 	"net/url"
 
 	"github.com/go-logr/logr"
+	"github.com/insomniacslk/dhcp/dhcpv4"
 	"github.com/tinkerbell/dhcp/handler"
 )
 
@@ -45,7 +46,7 @@ type Netboot struct {
 	IPXEBinServerHTTP *url.URL
 
 	// IPXEScriptURL is the URL to the IPXE script to use.
-	IPXEScriptURL *url.URL
+	IPXEScriptURL func(*dhcpv4.DHCPv4) *url.URL
 
 	// Enabled is whether to enable sending netboot DHCP options.
 	Enabled bool

@@ -144,7 +144,10 @@ func (h *Handler) setNetworkBootOpts(ctx context.Context, m *dhcpv4.DHCPv4, n *d
 				return
 			}
 			uClass := UserClass(string(m.GetOneOption(dhcpv4.OptionUserClassInformation)))
-			ipxeScript := h.Netboot.IPXEScriptURL
+			var ipxeScript *url.URL
+			if h.Netboot.IPXEScriptURL != nil {
+				ipxeScript = h.Netboot.IPXEScriptURL(m)
+			}
 			if n.IPXEScriptURL != nil {
 				ipxeScript = n.IPXEScriptURL
 			}

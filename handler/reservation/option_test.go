@@ -271,7 +271,9 @@ func TestSetNetworkBootOpts(t *testing.T) {
 			want: &dhcpv4.DHCPv4{ServerIPAddr: net.IPv4(0, 0, 0, 0), BootFileName: "/netboot-not-allowed"},
 		},
 		"netboot allowed": {
-			server: &Handler{Log: logr.Discard(), Netboot: Netboot{IPXEScriptURL: &url.URL{Scheme: "http", Host: "localhost:8181", Path: "/01:02:03:04:05:06/auto.ipxe"}}},
+			server: &Handler{Log: logr.Discard(), Netboot: Netboot{IPXEScriptURL: func(*dhcpv4.DHCPv4) *url.URL {
+				return &url.URL{Scheme: "http", Host: "localhost:8181", Path: "/01:02:03:04:05:06/auto.ipxe"}
+			}}},
 			args: args{
 				in0: context.Background(),
 				m: &dhcpv4.DHCPv4{
@@ -293,7 +295,9 @@ func TestSetNetworkBootOpts(t *testing.T) {
 			)},
 		},
 		"netboot not allowed, arch unknown": {
-			server: &Handler{Log: logr.Discard(), Netboot: Netboot{IPXEScriptURL: &url.URL{Scheme: "http", Host: "localhost:8181", Path: "/01:02:03:04:05:06/auto.ipxe"}}},
+			server: &Handler{Log: logr.Discard(), Netboot: Netboot{IPXEScriptURL: func(*dhcpv4.DHCPv4) *url.URL {
+				return &url.URL{Scheme: "http", Host: "localhost:8181", Path: "/01:02:03:04:05:06/auto.ipxe"}
+			}}},
 			args: args{
 				in0: context.Background(),
 				m: &dhcpv4.DHCPv4{
