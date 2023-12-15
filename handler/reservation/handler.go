@@ -124,12 +124,15 @@ func (h *Handler) Handle(ctx context.Context, conn *ipv4.PacketConn, p data.Pack
 	if ns := reply.ServerIPAddr; ns != nil {
 		log = log.WithValues("nextServer", ns.String())
 	}
-	log = log.WithValues("ipAddress", reply.YourIPAddr.String(), "destination", p.Peer.String())
+
+	dst := replyDestination(p.Peer, p.Pkt.GatewayIPAddr)
+	log = log.WithValues("ipAddress", reply.YourIPAddr.String(), "destination", dst.String())
 	cm := &ipv4.ControlMessage{}
 	if p.Md != nil {
 		cm.IfIndex = p.Md.IfIndex
 	}
-	if _, err := conn.WriteTo(reply.ToBytes(), cm, p.Peer); err != nil {
+
+	if _, err := conn.WriteTo(reply.ToBytes(), cm, dst); err != nil {
 		log.Error(err, "failed to send DHCP")
 		span.SetStatus(codes.Error, err.Error())
 
@@ -139,6 +142,22 @@ func (h *Handler) Handle(ctx context.Context, conn *ipv4.PacketConn, p data.Pack
 	log.Info("sent DHCP response")
 	span.SetAttributes(h.encodeToAttributes(reply, "reply")...)
 	span.SetStatus(codes.Ok, "sent DHCP response")
+}
+
+// replyDestination determines the destination address for the DHCP reply.
+// If the giaddr is set, then the reply should be sent to the giaddr.
+// Otherwise, the reply should be sent to the direct peer.
+//
+// From page 22 of https://www.ietf.org/rfc/rfc2131.txt:
+// "If the 'giaddr' field in a DHCP message from a client is non-zero,
+// the server sends any return messages to the 'DHCP server' port on
+// the BOOTP relay agent whose address appears in 'giaddr'.".
+func replyDestination(directPeer net.Addr, giaddr net.IP) net.Addr {
+	if !giaddr.IsUnspecified() && giaddr != nil {
+		return &net.UDPAddr{IP: giaddr, Port: dhcpv4.ServerPort}
+	}
+
+	return directPeer
 }
 
 // readBackend encapsulates the backend read and opentelemetry handling.

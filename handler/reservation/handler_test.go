@@ -275,10 +275,6 @@ func TestHandle(t *testing.T) {
 			want:    nil,
 			wantErr: errBadBackend,
 		},
-		/*"nil incoming packet": {
-			want:    nil,
-			wantErr: errBadBackend,
-		},*/
 		"failure no hardware found discover": {
 			server: Handler{
 				Backend: &mockBackend{hardwareNotFound: true},
@@ -596,6 +592,36 @@ func TestEncodeToAttributes(t *testing.T) {
 			if diff := cmp.Diff(got.Encoded(enc), want.Encoded(enc)); diff != "" {
 				t.Log(got.Encoded(enc))
 				t.Log(want.Encoded(enc))
+				t.Fatal(diff)
+			}
+		})
+	}
+}
+
+func TestReplyDestination(t *testing.T) {
+	tests := map[string]struct {
+		directPeer net.Addr
+		giaddr     net.IP
+		want       net.Addr
+	}{
+		"direct peer": {
+			directPeer: &net.UDPAddr{IP: net.IP{192, 168, 1, 100}, Port: 68},
+			want:       &net.UDPAddr{IP: net.IP{192, 168, 1, 100}, Port: 68},
+		},
+		"direct peer with unspecified giaddr": {
+			directPeer: &net.UDPAddr{IP: net.IP{192, 168, 1, 99}, Port: 68},
+			giaddr:     net.IPv4zero,
+			want:       &net.UDPAddr{IP: net.IP{192, 168, 1, 99}, Port: 68},
+		},
+		"giaddr": {
+			giaddr: net.IP{192, 168, 2, 1},
+			want:   &net.UDPAddr{IP: net.IP{192, 168, 2, 1}, Port: 67},
+		},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			got := replyDestination(tt.directPeer, tt.giaddr)
+			if diff := cmp.Diff(got, tt.want); diff != "" {
 				t.Fatal(diff)
 			}
 		})
