@@ -597,3 +597,33 @@ func TestEncodeToAttributes(t *testing.T) {
 		})
 	}
 }
+
+func TestReplyDestination(t *testing.T) {
+	tests := map[string]struct {
+		directPeer net.Addr
+		giaddr     net.IP
+		want       net.Addr
+	}{
+		"direct peer": {
+			directPeer: &net.UDPAddr{IP: net.IP{192, 168, 1, 100}, Port: 68},
+			want:       &net.UDPAddr{IP: net.IP{192, 168, 1, 100}, Port: 68},
+		},
+		"direct peer with unspecified giaddr": {
+			directPeer: &net.UDPAddr{IP: net.IP{192, 168, 1, 99}, Port: 68},
+			giaddr:     net.IPv4zero,
+			want:       &net.UDPAddr{IP: net.IP{192, 168, 1, 99}, Port: 68},
+		},
+		"giaddr": {
+			giaddr: net.IP{192, 168, 2, 1},
+			want:   &net.UDPAddr{IP: net.IP{192, 168, 2, 1}, Port: 67},
+		},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			got := replyDestination(tt.directPeer, tt.giaddr)
+			if diff := cmp.Diff(got, tt.want); diff != "" {
+				t.Fatal(diff)
+			}
+		})
+	}
+}
