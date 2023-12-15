@@ -275,10 +275,6 @@ func TestHandle(t *testing.T) {
 			want:    nil,
 			wantErr: errBadBackend,
 		},
-		/*"nil incoming packet": {
-			want:    nil,
-			wantErr: errBadBackend,
-		},*/
 		"failure no hardware found discover": {
 			server: Handler{
 				Backend: &mockBackend{hardwareNotFound: true},
