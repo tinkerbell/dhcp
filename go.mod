@@ -6,12 +6,12 @@ require (
 	github.com/equinix-labs/otel-init-go v0.0.9
 	github.com/fsnotify/fsnotify v1.7.0
 	github.com/ghodss/yaml v1.0.0
-	github.com/go-logr/logr v1.3.0
+	github.com/go-logr/logr v1.4.0
 	github.com/go-logr/stdr v1.2.2
 	github.com/google/go-cmp v0.6.0
 	github.com/insomniacslk/dhcp v0.0.0-20230908212754-65c27093e38a
 	github.com/tinkerbell/tink v0.9.0
-	github.com/tonglil/buflogr v1.0.1
+	github.com/tonglil/buflogr v1.1.0
 	go.opentelemetry.io/otel v1.21.0
 	go.opentelemetry.io/otel/trace v1.21.0
 	golang.org/x/net v0.19.0
